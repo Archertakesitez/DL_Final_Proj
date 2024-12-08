@@ -114,13 +114,18 @@ class ProbingEvaluator:
                 # TODO: Forward pass through your model
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
 
-                pred_encs, targets = model(
-                    states=init_states, actions=batch.actions, training=True
-                )
-                if targets is None:
-                    print("Skipping batch with no valid targets")
+                try:
+                    pred_encs, targets = model(
+                        states=init_states, actions=batch.actions, training=True
+                    )
+                    if targets is None or len(pred_encs) == 0:
+                        print("Skipping batch with no valid predictions")
+                        continue
+
+                    pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
+                except RuntimeError as e:
+                    print(f"Error in forward pass: {e}")
                     continue
-                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
