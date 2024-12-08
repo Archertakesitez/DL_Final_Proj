@@ -96,7 +96,8 @@ class RecurrentJEPA(nn.Module):
 
     def forward(self, states, actions):
         batch_size, trajectory_length, _, _, _ = states.shape
-
+        if trajectory_length <= 1:
+            raise ValueError(f"Expected trajectory_length > 1, got {trajectory_length}")
         # Encode the initial state
         s_encoded = self.encoder(states[:, 0])  # Initial state embedding
         target_embeddings = [
@@ -112,8 +113,9 @@ class RecurrentJEPA(nn.Module):
         predictions = torch.stack(
             predictions, dim=1
         )  # (batch_size, trajectory_length-1, embed_dim)
-        targets = torch.stack(
-            target_embeddings[1:], dim=1
-        )  # Skip the first target embedding
+        if len(target_embeddings) > 1:
+            targets = torch.stack(target_embeddings[1:], dim=1)
+        else:
+            raise RuntimeError("No valid target embeddings to stack.")
 
         return predictions, targets
