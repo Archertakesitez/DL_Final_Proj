@@ -139,6 +139,7 @@ class ProbingEvaluator:
 
                 target = getattr(batch, "locations").cuda()
                 target = self.normalizer.normalize_location(target)
+                target = target[:, 1:, :]  # Remove first timestep
 
                 if (
                     config.sample_timesteps is not None
@@ -231,6 +232,7 @@ class ProbingEvaluator:
 
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
+            target = target[:, 1:, :]  # Remove first timestep
 
             pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
             losses = location_losses(pred_locs, target)
