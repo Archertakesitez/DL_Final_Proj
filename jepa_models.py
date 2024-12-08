@@ -9,11 +9,11 @@ class ViTEncoder(nn.Module):
     def __init__(self, embed_dim=768):
         super(ViTEncoder, self).__init__()
         self.vit = create_model(
-            'vit_base_patch16_64',  # ViT base model with patch size 16
+            "vit_base_patch16_224",  # ViT base model with patch size 16
             pretrained=False,  # Do not load pretrained weights
             img_size=64,  # Input image size
             in_chans=2,  # Number of input channels
-            num_classes=0  # Remove classification head
+            num_classes=0,  # Remove classification head
         )
         self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
 
@@ -43,7 +43,9 @@ class RecurrentPredictor(nn.Module):
         self.fc2 = nn.Linear(embed_dim, embed_dim)
 
     def forward(self, state_embedding, action):
-        x = torch.cat([state_embedding, action], dim=-1)  # Concatenate embeddings and action
+        x = torch.cat(
+            [state_embedding, action], dim=-1
+        )  # Concatenate embeddings and action
         x = torch.relu(self.fc1(x))
         return self.fc2(x)
 
@@ -74,7 +76,7 @@ class RecurrentPredictor(nn.Module):
 #         # Stack encoded states across time
 #         encoded_states = torch.stack(encoded_states, dim=1)  # (num_trajectories, trajectory_length, embed_dim)
 #         target_states = torch.stack(target_states, dim=1)  # (num_trajectories, trajectory_length, embed_dim)
-        
+
 #         # Pass state-action sequence to predictor
 #         predicted_embeddings = self.predictor(
 #             encoded_states[:, :-1],  # Exclude the last state for predictions
@@ -96,7 +98,9 @@ class RecurrentJEPA(nn.Module):
 
         # Encode the initial state
         s_encoded = self.encoder(states[:, 0])  # Initial state embedding
-        target_embeddings = [self.target_encoder(states[:, t]) for t in range(trajectory_length)]
+        target_embeddings = [
+            self.target_encoder(states[:, t]) for t in range(trajectory_length)
+        ]
 
         # Predict subsequent states
         predictions = []
@@ -104,7 +108,11 @@ class RecurrentJEPA(nn.Module):
             s_encoded = self.predictor(s_encoded, actions[:, t])
             predictions.append(s_encoded)
 
-        predictions = torch.stack(predictions, dim=1)  # (batch_size, trajectory_length-1, embed_dim)
-        targets = torch.stack(target_embeddings[1:], dim=1)  # Skip the first target embedding
+        predictions = torch.stack(
+            predictions, dim=1
+        )  # (batch_size, trajectory_length-1, embed_dim)
+        targets = torch.stack(
+            target_embeddings[1:], dim=1
+        )  # Skip the first target embedding
 
         return predictions, targets
