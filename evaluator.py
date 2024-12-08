@@ -113,9 +113,15 @@ class ProbingEvaluator:
                 ################################################################################
                 # TODO: Forward pass through your model
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
-                pred_encs = model(
+                if init_states.shape[1] < 2:  # Check trajectory length
+                    print("Skipping batch with trajectory length < 2")
+                    continue
+                pred_encs, targets = model(
                     states=init_states, actions=batch.actions, training=True
                 )
+                if targets is None:
+                    print("Skipping batch with no valid targets")
+                    continue
                 pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
 
                 # Make sure pred_encs has shape (T, BS, D) at this point

@@ -37,7 +37,9 @@ def compute_loss(predictions, targets, reg_weight=0.1):
     return mse_loss + reg_weight * reg_loss
 
 
-def train_model(model, dataloader, optimizer, epochs, device, save_path="pretrained_jepa_model.pth"):
+def train_model(
+    model, dataloader, optimizer, epochs, device, save_path="pretrained_jepa_model.pth"
+):
     model = model.to(device)
     best_loss = float("inf")
 
@@ -49,7 +51,11 @@ def train_model(model, dataloader, optimizer, epochs, device, save_path="pretrai
 
         for i, batch in pbar:
             states, locations, actions = batch
-            states, locations, actions = states.to(device), locations.to(device), actions.to(device)
+            states, locations, actions = (
+                states.to(device),
+                locations.to(device),
+                actions.to(device),
+            )
 
             # Forward pass
             predictions, targets = model(states, actions)
@@ -64,10 +70,10 @@ def train_model(model, dataloader, optimizer, epochs, device, save_path="pretrai
             optimizer.step()
 
             pbar.set_postfix({"Loss": loss.item()})
-        
+
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {e + 1}/{epochs}, Average Loss: {avg_loss:.4f}")
-        
+
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save(model.state_dict(), save_path)
@@ -81,7 +87,7 @@ def main():
     weight_decay = 1e-5
     epochs = 10
     embed_dim = 768
-    
+
     # Define data, model, and optimizer
     device = get_device()
     model = RecurrentJEPA(embed_dim=embed_dim)
@@ -92,9 +98,5 @@ def main():
     train_model(model, train_dataloader, optimizer, epochs, device, save_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
-
-
-        
