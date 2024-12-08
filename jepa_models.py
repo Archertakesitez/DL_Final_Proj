@@ -11,7 +11,7 @@ class ViTEncoder(nn.Module):
         self.vit = create_model(
             "vit_base_patch16_224",  # ViT base model with patch size 16
             pretrained=False,  # Do not load pretrained weights
-            img_size=64,  # Input image size
+            img_size=65,  # Input image size
             in_chans=2,  # Number of input channels
             num_classes=0,  # Remove classification head
         )
