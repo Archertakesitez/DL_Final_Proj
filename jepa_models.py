@@ -94,28 +94,32 @@ class RecurrentJEPA(nn.Module):
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
         self.repr_dim = embed_dim  # Set repr_dim to the embedding dimension (768)
 
-    def forward(self, states, actions):
+    def forward(self, states, actions, training=True):
         batch_size, trajectory_length, _, _, _ = states.shape
-        if trajectory_length <= 1:
-            raise ValueError(f"Expected trajectory_length > 1, got {trajectory_length}")
-        # Encode the initial state
-        s_encoded = self.encoder(states[:, 0])  # Initial state embedding
-        target_embeddings = [
-            self.target_encoder(states[:, t]) for t in range(trajectory_length)
-        ]
 
-        # Predict subsequent states
-        predictions = []
-        for t in range(actions.shape[1]):  # trajectory_length - 1
-            s_encoded = self.predictor(s_encoded, actions[:, t])
-            predictions.append(s_encoded)
+        if training:
+            # Use all timesteps during training
+            target_embeddings = [
+                self.target_encoder(states[:, t]) for t in range(trajectory_length)
+            ]
+            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
 
-        predictions = torch.stack(
-            predictions, dim=1
-        )  # (batch_size, trajectory_length-1, embed_dim)
-        if len(target_embeddings) > 1:
+            predictions = []
+            for t in range(actions.shape[1]):  # trajectory_length - 1
+                s_encoded = self.predictor(s_encoded, actions[:, t])
+                predictions.append(s_encoded)
+
+            predictions = torch.stack(predictions, dim=1)
             targets = torch.stack(target_embeddings[1:], dim=1)
+            return predictions, targets
         else:
-            raise RuntimeError("No valid target embeddings to stack.")
+            # Use only the first timestep during inference
+            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
 
-        return predictions, targets
+            predictions = []
+            for t in range(actions.shape[1]):  # trajectory_length - 1
+                s_encoded = self.predictor(s_encoded, actions[:, t])
+                predictions.append(s_encoded)
+
+            predictions = torch.stack(predictions, dim=1)
+            return predictions
