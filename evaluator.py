@@ -164,6 +164,9 @@ class ProbingEvaluator:
                     target = sampled_target_locs.cuda()
 
                 pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+                print(f"pred_locs shape: {pred_locs.shape}")
+                print(f"target shape: {target.shape}")
+
                 losses = location_losses(pred_locs, target)
                 per_probe_loss = losses.mean()
 
