@@ -18,7 +18,7 @@ class ViTEncoder(nn.Module):
         self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
 
     def forward(self, x):
-        x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
+        # x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
         x = self.vit(x)
         return self.projection(x)
 
