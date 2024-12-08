@@ -42,7 +42,7 @@ def load_data(device):
     return probe_train_ds, probe_val_ds
 
 
-def load_model():
+def load_model(device):
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
     embed_dim = 768
@@ -53,7 +53,8 @@ def load_model():
 
     # Load the pretrained weights
     checkpoint_path = "pretrained_jepa_model.pth"  # Adjust path as needed
-    model.load_state_dict(torch.load(checkpoint_path))
+    model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+    model = model.to(device)
 
     # Ensure model is in evaluation mode
     model.eval()
@@ -81,5 +82,5 @@ def evaluate_model(device, model, probe_train_ds, probe_val_ds):
 if __name__ == "__main__":
     device = get_device()
     probe_train_ds, probe_val_ds = load_data(device)
-    model = load_model()
+    model = load_model(device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)
