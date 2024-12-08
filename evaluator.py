@@ -112,14 +112,14 @@ class ProbingEvaluator:
             for batch in tqdm(dataset, desc="Probe prediction step"):
                 ################################################################################
                 # TODO: Forward pass through your model
-                init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
+                init_states = batch.states  # BS, T, C, H, W
 
                 try:
                     pred_encs, targets = model(
                         states=init_states, actions=batch.actions, training=True
                     )
-                    if targets is None or len(pred_encs) == 0:
-                        print("Skipping batch with no valid predictions")
+                    if pred_encs is None:
+                        print("Skipping batch - no valid predictions")
                         continue
 
                     pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
