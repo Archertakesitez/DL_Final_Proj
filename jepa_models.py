@@ -92,6 +92,7 @@ class RecurrentJEPA(nn.Module):
         self.encoder = ViTEncoder(embed_dim=embed_dim)
         self.target_encoder = ViTEncoder(embed_dim=embed_dim)  # Optionally shared
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
+        self.repr_dim = embed_dim  # Set repr_dim to the embedding dimension (768)
 
     def forward(self, states, actions):
         batch_size, trajectory_length, _, _, _ = states.shape
