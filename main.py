@@ -1,5 +1,6 @@
 from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
+from jepa_models import RecurrentJEPA
 import torch
 from models import MockModel
 import glob
@@ -44,7 +45,19 @@ def load_data(device):
 def load_model():
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
-    model = MockModel()
+    embed_dim = 768
+    action_dim = 2  # As per your dataset
+
+    # Initialize the RecurrentJEPA model
+    model = RecurrentJEPA(embed_dim=embed_dim, action_dim=action_dim)
+
+    # Load the pretrained weights
+    checkpoint_path = "pretrained_jepa_model.pth"  # Adjust path as needed
+    model.load_state_dict(torch.load(checkpoint_path))
+
+    # Ensure model is in evaluation mode
+    model.eval()
+
     return model
 
 
