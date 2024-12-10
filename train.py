@@ -83,12 +83,13 @@ def train_model(
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
 
-        # Early stopping based on training loss
-        if avg_loss < best_loss:
+        # Strict improvement check
+        if (
+            avg_loss < best_loss - 1e-5
+        ):  # Only count as improvement if meaningfully better
             best_loss = avg_loss
             best_epoch = e
             patience_counter = 0
-            # Save best model
             torch.save(
                 {
                     "epoch": e,
@@ -101,6 +102,10 @@ def train_model(
             print(f"New best loss: {best_loss:.4f}. Model saved to {save_path}")
         else:
             patience_counter += 1
+            print(
+                f"No improvement for {patience_counter} epochs. Best loss: {best_loss:.4f}"
+            )
+
             if patience_counter >= patience:
                 print(
                     f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
