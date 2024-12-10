@@ -44,7 +44,7 @@ def train_model(
     epochs,
     device,
     patience=5,
-    save_path="pretrained_jepa_model.pth",
+    save_path="model_weights.pth",
 ):
     model = model.to(device)
     best_loss = float("inf")
@@ -83,23 +83,12 @@ def train_model(
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
 
-        # Strict improvement check
-        if (
-            avg_loss < best_loss - 1e-5
-        ):  # Only count as improvement if meaningfully better
+        if avg_loss < best_loss - 1e-5:
             best_loss = avg_loss
             best_epoch = e
             patience_counter = 0
-            torch.save(
-                {
-                    "epoch": e,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "loss": best_loss,
-                },
-                save_path,
-            )
-            print(f"New best loss: {best_loss:.4f}. Model saved to {save_path}")
+            torch.save(model.state_dict(), save_path)
+            print(f"New best loss: {best_loss:.4f}. Model weights saved to {save_path}")
         else:
             patience_counter += 1
             print(
@@ -114,11 +103,11 @@ def train_model(
 
 
 def main():
-    save_path = "pretrained_jepa_model.pth"
+    save_path = "model_weights.pth"
     # Hyperparameters
     lr = 1e-4
     weight_decay = 1e-5
-    epochs = 10
+    epochs = 20
     embed_dim = 768
     momentum = 0.99
     patience = 5

@@ -52,8 +52,8 @@ def load_model(device):
     model = RecurrentJEPA(embed_dim=embed_dim, action_dim=action_dim)
 
     # Load the pretrained weights
-    checkpoint_path = "pretrained_jepa_model.pth"  # Adjust path as needed
-    model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+    checkpoint_path = "model_weights.pth"  # Changed filename
+    model.load_state_dict(torch.load(checkpoint_path))  # Simplified loading
     model = model.to(device)
 
     # Ensure model is in evaluation mode
