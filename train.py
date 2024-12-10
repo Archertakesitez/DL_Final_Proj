@@ -116,6 +116,7 @@ def main():
     epochs = 10
     embed_dim = 768
     momentum = 0.99
+    patience = 5
 
     # Define data, model, and optimizer
     device = get_device()
@@ -124,7 +125,15 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Train the model
-    train_model(model, train_dataloader, optimizer, epochs, device, save_path)
+    train_model(
+        model,
+        train_dataloader,
+        optimizer,
+        epochs,
+        device,
+        patience=patience,
+        save_path=save_path,
+    )
 
 
 if __name__ == "__main__":

@@ -106,6 +106,9 @@ class RecurrentJEPA(nn.Module):
                 False  # Target encoder should not be updated by gradients
             )
 
+        # Consider adding dropout for regularization
+        self.dropout = nn.Dropout(0.1)  # Optional
+
     def forward(self, states, actions, training=True):
         batch_size, trajectory_length, _, _, _ = states.shape
 
