@@ -172,9 +172,9 @@ class RecurrentJEPA(nn.Module):
     @torch.no_grad()
     def _momentum_update_target_encoder(self):
         """Momentum update with exponential schedule"""
-        self.m_factor = min(
-            self.m_factor * 1.005, self.m
-        )  # Gradually increase momentum
+        # Convert to tensor and stay on same device
+        self.m_factor.mul_(1.005).clamp_(max=self.m)  # In-place operations on tensor
+
         for param_q, param_k in zip(
             self.encoder.parameters(), self.target_encoder.parameters()
         ):
