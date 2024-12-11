@@ -3,6 +3,7 @@ from timm import create_model
 import torch.nn as nn
 from dataset import WallDataset
 from torch.nn.functional import mse_loss
+import torch.nn.functional as F
 
 
 class ViTEncoder(nn.Module):
@@ -39,19 +40,32 @@ class ViTEncoder(nn.Module):
 class RecurrentPredictor(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2):
         super().__init__()
-        # Make the predictor more expressive
-        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim * 2)
-        self.ln1 = nn.LayerNorm(embed_dim * 2)
-        self.fc2 = nn.Linear(embed_dim * 2, embed_dim)
-        self.ln2 = nn.LayerNorm(embed_dim)
+        # Wider network with residual connections
+        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim * 4)
+        self.ln1 = nn.LayerNorm(embed_dim * 4)
+        self.fc2 = nn.Linear(embed_dim * 4, embed_dim * 2)
+        self.ln2 = nn.LayerNorm(embed_dim * 2)
+        self.fc3 = nn.Linear(embed_dim * 2, embed_dim)
+        self.ln3 = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(0.1)
 
+        # Residual connection
+        self.residual = nn.Linear(embed_dim + action_dim, embed_dim)
+
     def forward(self, state_embedding, action):
-        x = torch.cat([state_embedding, action], dim=-1)
-        x = self.ln1(torch.relu(self.fc1(x)))
+        identity = state_embedding
+        combined = torch.cat([state_embedding, action], dim=-1)
+
+        # Main path
+        x = self.ln1(torch.relu(self.fc1(combined)))
         x = self.dropout(x)
-        x = self.ln2(self.fc2(x))
-        return x
+        x = self.ln2(torch.relu(self.fc2(x)))
+        x = self.dropout(x)
+        x = self.ln3(self.fc3(x))
+
+        # Residual connection
+        res = self.residual(combined)
+        return x + res
 
 
 # class RecurrentJEPA(nn.Module):
@@ -92,7 +106,7 @@ class RecurrentPredictor(nn.Module):
 
 class RecurrentJEPA(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2, momentum=0.99):
-        super(RecurrentJEPA, self).__init__()
+        super().__init__()
         self.encoder = ViTEncoder(embed_dim=embed_dim)
         self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
@@ -113,11 +127,15 @@ class RecurrentJEPA(nn.Module):
         # Consider adding dropout for regularization
         self.dropout = nn.Dropout(0.1)  # Optional
 
+        # Initialize momentum parameters
+        self.m = momentum
+        self.register_buffer("m_factor", torch.tensor(1.0))  # For exponential schedule
+
     def forward(self, states, actions, training=True):
         batch_size, trajectory_length, _, _, _ = states.shape
 
         if training:
-            # Use all timesteps during training
+            # Get all target embeddings first
             target_embeddings = [
                 self.target_encoder(states[:, t]) for t in range(trajectory_length)
             ]
@@ -128,15 +146,23 @@ class RecurrentJEPA(nn.Module):
                 s_encoded = self.predictor(s_encoded, actions[:, t])
                 predictions.append(s_encoded)
 
-            predictions = torch.stack(predictions, dim=1)
-            targets = torch.stack(target_embeddings[1:], dim=1)
-            return predictions, targets
-        else:
-            # Use only the first timestep during inference
-            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
+            predictions = torch.stack(predictions, dim=1)  # [B, T-1, embed_dim]
+            targets = torch.stack(target_embeddings[1:], dim=1)  # [B, T-1, embed_dim]
 
+            # Reshape for VICReg loss: combine batch and time dimensions
+            predictions_flat = predictions.reshape(
+                -1, predictions.shape[-1]
+            )  # [B*(T-1), embed_dim]
+            targets_flat = targets.reshape(
+                -1, targets.shape[-1]
+            )  # [B*(T-1), embed_dim]
+
+            return predictions_flat, targets_flat
+        else:
+            # Inference mode remains the same
+            s_encoded = self.encoder(states[:, 0])
             predictions = []
-            for t in range(actions.shape[1]):  # trajectory_length - 1
+            for t in range(actions.shape[1]):
                 s_encoded = self.predictor(s_encoded, actions[:, t])
                 predictions.append(s_encoded)
 
@@ -145,10 +171,37 @@ class RecurrentJEPA(nn.Module):
 
     @torch.no_grad()
     def _momentum_update_target_encoder(self):
-        """Momentum update for target encoder"""
+        """Momentum update with exponential schedule"""
+        self.m_factor = min(
+            self.m_factor * 1.005, self.m
+        )  # Gradually increase momentum
         for param_q, param_k in zip(
             self.encoder.parameters(), self.target_encoder.parameters()
         ):
-            param_k.data = param_k.data * self.momentum + param_q.data * (
-                1.0 - self.momentum
+            param_k.data = param_k.data * self.m_factor + param_q.data * (
+                1.0 - self.m_factor
             )
+
+
+def vicreg_loss(pred, target, sim_coef=25.0, var_coef=25.0, cov_coef=1.0):
+    # Invariance loss
+    sim_loss = F.mse_loss(pred, target)
+
+    # Variance loss
+    std_pred = torch.sqrt(pred.var(dim=0) + 1e-4)
+    std_target = torch.sqrt(target.var(dim=0) + 1e-4)
+    var_loss = torch.mean(F.relu(1 - std_pred)) + torch.mean(F.relu(1 - std_target))
+
+    # Covariance loss
+    pred_centered = pred - pred.mean(dim=0)
+    target_centered = target - target.mean(dim=0)
+    cov_pred = (pred_centered.T @ pred_centered) / (pred.shape[0] - 1)
+    cov_target = (target_centered.T @ target_centered) / (target.shape[0] - 1)
+    cov_loss = off_diagonal(cov_pred).pow_(2).sum() / pred.shape[1]
+
+    return sim_coef * sim_loss + var_coef * var_loss + cov_coef * cov_loss
+
+
+def off_diagonal(x):
+    n = x.shape[0]
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()

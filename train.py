@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from dataset import WallDataset, create_wall_dataloader
-from jepa_models import RecurrentJEPA
+from jepa_models import RecurrentJEPA, vicreg_loss
 from tqdm import tqdm
 
 
@@ -26,19 +26,22 @@ def load_data(device):
     return train_ds
 
 
-def compute_loss(predictions, targets, reg_weight=0.1):
-    # Cosine similarity loss for better representation learning
-    cos_sim = nn.CosineSimilarity(dim=-1)(predictions, targets)
-    cos_loss = (1 - cos_sim).mean()
+def train_step(model, optimizer, states, actions):
+    # Forward pass
+    predictions, targets = model(states, actions, training=True)
 
-    # MSE loss
-    mse_loss = nn.MSELoss()(predictions, targets)
+    # Calculate VICReg loss (imported from jepa_models)
+    loss = vicreg_loss(predictions, targets)
 
-    # Variance regularization
-    batch_mean = torch.mean(predictions, dim=0)
-    reg_loss = torch.mean((predictions - batch_mean) ** 2)
+    # Update model
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
-    return mse_loss + 0.2 * cos_loss + reg_weight * reg_loss
+    # Update target encoder with momentum
+    model._momentum_update_target_encoder()
+
+    return loss.item()
 
 
 def train_model(
@@ -71,12 +74,13 @@ def train_model(
 
             # Forward pass
             predictions, targets = model(states, actions)
-            loss = compute_loss(predictions, targets)
+            loss = vicreg_loss(predictions, targets)
             epoch_loss += loss.item()
 
             # Backpropagation
             optimizer.zero_grad()
             loss.backward()
+            # Add gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
