@@ -31,15 +31,19 @@ def variance_regularization(embeddings, eps=1e-4):
     Computes variance regularization loss for embeddings.
 
     Args:
-        embeddings (torch.Tensor): Embeddings of shape (batch_size, embed_dim).
+        embeddings (torch.Tensor): Embeddings of shape (batch_size, trajectory_length, embed_dim).
         eps (float): Small value to avoid division by zero.
 
     Returns:
         torch.Tensor: Variance regularization loss.
     """
 
-    variance = torch.var(embeddings, dim=0)  # Variance across the batch
-    reg_loss = torch.mean(torch.relu(eps - variance))  # Penalize low variance
+    # Reshape to (batch_size * trajectory_length, emb_size)
+    flattened = embeddings.view(-1, embeddings.size(-1))
+    
+    variance = torch.var(flattened, dim=0)
+    reg_loss = torch.mean(torch.relu(eps - variance))
+    
     return reg_loss
 
 
@@ -48,16 +52,20 @@ def covariance_regularization(embeddings):
     Computes covariance regularization loss for embeddings.
 
     Args:
-        embeddings (torch.Tensor): Embeddings of shape (batch_size, embed_dim).
+        embeddings (torch.Tensor): Embeddings of shape (batch_size, trajectory_length, embed_dim).
 
     Returns:
         torch.Tensor: Covariance regularization loss.
     """
-    batch_size, embed_dim = embeddings.size()
-    embeddings = embeddings - embeddings.mean(dim=0)  # Center embeddings
-    cov_matrix = (embeddings.T @ embeddings) / batch_size  # Covariance matrix
-    off_diag = cov_matrix - torch.diag(torch.diag(cov_matrix))  # Remove diagonal
-    reg_loss = torch.sum(off_diag ** 2)  # Penalize off-diagonal elements
+    
+    # Reshape to (batch_size * trajectory_length, emb_size)
+    flattened = embeddings.view(-1, embeddings.size(-1))
+    
+    flattened = flattened - flattened.mean(dim=0)
+    cov_matrix = (flattened.T @ flattened) / flattened.size(0)
+    off_diag = cov_matrix - torch.diag(torch.diag(cov_matrix))
+    reg_loss = torch.sum(off_diag ** 2)
+
     return reg_loss
 
 
@@ -66,21 +74,27 @@ def contrastive_loss(predictions, targets, temperature=0.1):
     Contrastive loss to ensure diversity among embeddings.
 
     Args:
-        predictions (torch.Tensor): Predicted embeddings (batch_size, embed_dim).
+        predictions (torch.Tensor): Predicted embeddings (batch_size, trajectory_length, embed_dim).
         targets (torch.Tensor): Target embeddings (batch_size, embed_dim).
         temperature (float): Temperature for scaling logits.
 
     Returns:
         torch.Tensor: Contrastive loss.
     """
-    batch_size = predictions.size(0)
-    predictions = predictions / predictions.norm(dim=1, keepdim=True)  # Normalize
-    targets = targets / targets.norm(dim=1, keepdim=True)  # Normalize
+    
+    # Reshape to (batch_size * trajectory_length, emb_size)
+    pred_flat = predictions.view(-1, predictions.size(-1))
+    target_flat = targets.view(-1, targets.size(-1))
+    
+    pred_flat = pred_flat / pred_flat.norm(dim=1, keepdim=True)
+    target_flat = target_flat / target_flat.norm(dim=1, keepdim=True)
+    
+    logits = torch.mm(pred_flat, target_flat.T) / temperature
 
-    # Compute cosine similarity
-    logits = torch.mm(predictions, targets.T) / temperature
-    labels = torch.arange(batch_size).to(predictions.device)
+    labels = torch.arange(pred_flat.size(0), device=predictions.device)
+    
     loss = nn.CrossEntropyLoss()(logits, labels)
+    
     return loss
 
 
