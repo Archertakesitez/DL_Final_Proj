@@ -159,14 +159,14 @@ class RecurrentJEPA(nn.Module):
 
             return predictions_flat, targets_flat
         else:
-            # Inference mode remains the same
+            # For evaluation/inference, return predictions in format [T, B, D]
             s_encoded = self.encoder(states[:, 0])
             predictions = []
             for t in range(actions.shape[1]):
                 s_encoded = self.predictor(s_encoded, actions[:, t])
                 predictions.append(s_encoded)
 
-            predictions = torch.stack(predictions, dim=1)
+            predictions = torch.stack(predictions, dim=0)  # [T, B, D]
             return predictions
 
     @torch.no_grad()

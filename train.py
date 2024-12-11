@@ -124,7 +124,7 @@ def main():
     epochs = 20
     embed_dim = 768
     momentum = 0.99
-    patience = 5
+    patience = 2
 
     # Define data, model, and optimizer
     device = get_device()
