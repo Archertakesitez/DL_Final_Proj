@@ -87,12 +87,27 @@ class RecurrentPredictor(nn.Module):
 
 
 class RecurrentJEPA(nn.Module):
-    def __init__(self, embed_dim=768, action_dim=2):
+    def __init__(self, embed_dim=768, action_dim=2, momentum=0.99):
         super(RecurrentJEPA, self).__init__()
         self.encoder = ViTEncoder(embed_dim=embed_dim)
-        self.target_encoder = ViTEncoder(embed_dim=embed_dim)  # Optionally shared
+        self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
-        self.repr_dim = embed_dim  # Set repr_dim to the embedding dimension (768)
+        self.repr_dim = embed_dim
+        self.momentum = momentum
+
+        # Initialize target encoder as a copy of the encoder
+        for param_q, param_k in zip(
+            self.encoder.parameters(), self.target_encoder.parameters()
+        ):
+            param_k.data.copy_(
+                param_q.data
+            )  # Initialize target encoder with encoder weights
+            param_k.requires_grad = (
+                False  # Target encoder should not be updated by gradients
+            )
+
+        # Consider adding dropout for regularization
+        self.dropout = nn.Dropout(0.1)  # Optional
 
     def forward(self, states, actions, training=True):
         batch_size, trajectory_length, _, _, _ = states.shape
@@ -123,3 +138,13 @@ class RecurrentJEPA(nn.Module):
 
             predictions = torch.stack(predictions, dim=1)
             return predictions
+
+    @torch.no_grad()
+    def _momentum_update_target_encoder(self):
+        """Momentum update for target encoder"""
+        for param_q, param_k in zip(
+            self.encoder.parameters(), self.target_encoder.parameters()
+        ):
+            param_k.data = param_k.data * self.momentum + param_q.data * (
+                1.0 - self.momentum
+            )

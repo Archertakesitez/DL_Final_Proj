@@ -38,15 +38,22 @@ def compute_loss(predictions, targets, reg_weight=0.1):
 
 
 def train_model(
-    model, dataloader, optimizer, epochs, device, save_path="pretrained_jepa_model.pth"
+    model,
+    dataloader,
+    optimizer,
+    epochs,
+    device,
+    patience=5,
+    save_path="model_weights.pth",
 ):
     model = model.to(device)
     best_loss = float("inf")
+    patience_counter = 0
+    best_epoch = 0
 
     for e in range(epochs):
         model.train()
         epoch_loss = 0.0
-
         pbar = tqdm(enumerate(dataloader), desc=f"Epoch {e+1}/{epochs}")
 
         for i, batch in pbar:
@@ -59,43 +66,68 @@ def train_model(
 
             # Forward pass
             predictions, targets = model(states, actions)
-
-            # Compute loss
             loss = compute_loss(predictions, targets)
             epoch_loss += loss.item()
 
             # Backpropagation
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+
+            # Update target encoder with momentum
+            model._momentum_update_target_encoder()
 
             pbar.set_postfix({"Loss": loss.item()})
 
         avg_loss = epoch_loss / len(dataloader)
-        print(f"Epoch {e + 1}/{epochs}, Average Loss: {avg_loss:.4f}")
+        print(f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
 
-        if avg_loss < best_loss:
+        if avg_loss < best_loss - 1e-5:
             best_loss = avg_loss
+            best_epoch = e
+            patience_counter = 0
             torch.save(model.state_dict(), save_path)
-            print(f"New best loss: {best_loss:.4f}. Model saved to {save_path}.")
+            print(f"New best loss: {best_loss:.4f}. Model weights saved to {save_path}")
+        else:
+            patience_counter += 1
+            print(
+                f"No improvement for {patience_counter} epochs. Best loss: {best_loss:.4f}"
+            )
+
+            if patience_counter >= patience:
+                print(
+                    f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
+                )
+                break
 
 
 def main():
-    save_path = "pretrained_jepa_model.pth"
+    save_path = "model_weights.pth"
     # Hyperparameters
     lr = 1e-4
     weight_decay = 1e-5
-    epochs = 10
+    epochs = 20
     embed_dim = 768
+    momentum = 0.99
+    patience = 5
 
     # Define data, model, and optimizer
     device = get_device()
-    model = RecurrentJEPA(embed_dim=embed_dim)
+    model = RecurrentJEPA(embed_dim=embed_dim, momentum=momentum)
     train_dataloader = load_data(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Train the model
-    train_model(model, train_dataloader, optimizer, epochs, device, save_path)
+    train_model(
+        model,
+        train_dataloader,
+        optimizer,
+        epochs,
+        device,
+        patience=patience,
+        save_path=save_path,
+    )
 
 
 if __name__ == "__main__":
