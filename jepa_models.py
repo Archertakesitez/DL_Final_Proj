@@ -38,16 +38,20 @@ class ViTEncoder(nn.Module):
 
 class RecurrentPredictor(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2):
-        super(RecurrentPredictor, self).__init__()
-        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim)
-        self.fc2 = nn.Linear(embed_dim, embed_dim)
+        super().__init__()
+        # Make the predictor more expressive
+        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim * 2)
+        self.ln1 = nn.LayerNorm(embed_dim * 2)
+        self.fc2 = nn.Linear(embed_dim * 2, embed_dim)
+        self.ln2 = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(0.1)
 
     def forward(self, state_embedding, action):
-        x = torch.cat(
-            [state_embedding, action], dim=-1
-        )  # Concatenate embeddings and action
-        x = torch.relu(self.fc1(x))
-        return self.fc2(x)
+        x = torch.cat([state_embedding, action], dim=-1)
+        x = self.ln1(torch.relu(self.fc1(x)))
+        x = self.dropout(x)
+        x = self.ln2(self.fc2(x))
+        return x
 
 
 # class RecurrentJEPA(nn.Module):

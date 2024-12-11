@@ -27,20 +27,25 @@ def load_data(device):
 
 
 def compute_loss(predictions, targets, reg_weight=0.1):
-    # Compute MSE loss
+    # Cosine similarity loss for better representation learning
+    cos_sim = nn.CosineSimilarity(dim=-1)(predictions, targets)
+    cos_loss = (1 - cos_sim).mean()
+
+    # MSE loss
     mse_loss = nn.MSELoss()(predictions, targets)
 
-    # Regularization (variance regularization to prevent collapse)
+    # Variance regularization
     batch_mean = torch.mean(predictions, dim=0)
     reg_loss = torch.mean((predictions - batch_mean) ** 2)
 
-    return mse_loss + reg_weight * reg_loss
+    return mse_loss + 0.2 * cos_loss + reg_weight * reg_loss
 
 
 def train_model(
     model,
     dataloader,
     optimizer,
+    scheduler,
     epochs,
     device,
     patience=5,
@@ -81,7 +86,12 @@ def train_model(
             pbar.set_postfix({"Loss": loss.item()})
 
         avg_loss = epoch_loss / len(dataloader)
-        print(f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
+        print(
+            f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}"
+        )
+
+        # Update learning rate
+        scheduler.step()
 
         if avg_loss < best_loss - 1e-5:
             best_loss = avg_loss
@@ -118,11 +128,17 @@ def main():
     train_dataloader = load_data(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+    # Add learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs, eta_min=1e-6
+    )
+
     # Train the model
     train_model(
         model,
         train_dataloader,
         optimizer,
+        scheduler,
         epochs,
         device,
         patience=patience,
