@@ -26,98 +26,96 @@ def load_data(device):
     return train_ds
 
 
-def variance_regularization(embeddings, eps=1e-4):
+def variance_loss(embeddings, eps=1e-4):
     """
-    Computes variance regularization loss for embeddings.
-
+    Implements VICReg-style variance loss to ensure each dimension has high variance.
+    
     Args:
-        embeddings (torch.Tensor): Embeddings of shape (batch_size, trajectory_length, embed_dim).
-        eps (float): Small value to avoid division by zero.
-
-    Returns:
-        torch.Tensor: Variance regularization loss.
+        embeddings (torch.Tensor): Embeddings of shape (batch_size, embed_dim)
+        eps (float): Small constant for numerical stability
     """
-
-    # Reshape to (batch_size * trajectory_length, emb_size)
-    flattened = embeddings.view(-1, embeddings.size(-1))
-    
-    variance = torch.var(flattened, dim=0)
-    reg_loss = torch.mean(torch.relu(eps - variance))
-    
-    return reg_loss
+    std = torch.sqrt(embeddings.var(dim=0) + eps)
+    return torch.mean(torch.relu(1 - std))
 
 
-def covariance_regularization(embeddings):
+def covariance_loss(embeddings):
     """
-    Computes covariance regularization loss for embeddings.
-
+    Implements VICReg-style covariance loss to decorrelate different dimensions.
+    
     Args:
-        embeddings (torch.Tensor): Embeddings of shape (batch_size, trajectory_length, embed_dim).
-
-    Returns:
-        torch.Tensor: Covariance regularization loss.
+        embeddings (torch.Tensor): Embeddings of shape (batch_size, embed_dim)
     """
+    batch_size, embed_dim = embeddings.size()
     
-    # Reshape to (batch_size * trajectory_length, emb_size)
-    flattened = embeddings.view(-1, embeddings.size(-1))
+    # Center the embeddings
+    embeddings = embeddings - embeddings.mean(dim=0)
     
-    flattened = flattened - flattened.mean(dim=0)
-    cov_matrix = (flattened.T @ flattened) / flattened.size(0)
-    off_diag = cov_matrix - torch.diag(torch.diag(cov_matrix))
-    reg_loss = torch.sum(off_diag ** 2)
+    # Compute covariance matrix
+    cov = (embeddings.T @ embeddings) / (batch_size - 1)
+    
+    # Zero out diagonal
+    diagonal_mask = ~torch.eye(embed_dim, device=embeddings.device).bool()
+    cov_off_diag = cov[diagonal_mask].pow(2)
+    
+    return cov_off_diag.sum() / embed_dim
 
-    return reg_loss
 
-
-def contrastive_loss(predictions, targets, temperature=0.1):
+def barlow_twins_loss(pred_embeddings, target_embeddings, lambda_param=0.0051):
     """
-    Contrastive loss to ensure diversity among embeddings.
-
+    Implements Barlow Twins cross-correlation loss.
+    
     Args:
-        predictions (torch.Tensor): Predicted embeddings (batch_size, trajectory_length, embed_dim).
-        targets (torch.Tensor): Target embeddings (batch_size, embed_dim).
-        temperature (float): Temperature for scaling logits.
-
-    Returns:
-        torch.Tensor: Contrastive loss.
+        pred_embeddings (torch.Tensor): Predicted embeddings (batch_size, embed_dim)
+        target_embeddings (torch.Tensor): Target embeddings (batch_size, embed_dim)
+        lambda_param (float): Off-diagonal scaling parameter
     """
+    batch_size = pred_embeddings.size(0)
     
-    # Reshape to (batch_size * trajectory_length, emb_size)
-    pred_flat = predictions.view(-1, predictions.size(-1))
-    target_flat = targets.view(-1, targets.size(-1))
+    # Normalize embeddings along batch dimension
+    pred_norm = (pred_embeddings - pred_embeddings.mean(0)) / pred_embeddings.std(0)
+    target_norm = (target_embeddings - target_embeddings.mean(0)) / target_embeddings.std(0)
     
-    pred_flat = pred_flat / pred_flat.norm(dim=1, keepdim=True)
-    target_flat = target_flat / target_flat.norm(dim=1, keepdim=True)
+    # Cross-correlation matrix
+    c = torch.mm(pred_norm.T, target_norm) / batch_size
     
-    logits = torch.mm(pred_flat, target_flat.T) / temperature
+    # Loss computation
+    on_diag = torch.diagonal(c).add_(-1).pow_(2)
+    off_diag = c.flatten()[1:].view(c.size(0) - 1, c.size(1) + 1)[:, :-1].flatten()
+    off_diag = off_diag.pow_(2).mul_(lambda_param)
+    
+    return on_diag.sum() + off_diag.sum()
 
-    labels = torch.arange(pred_flat.size(0), device=predictions.device)
-    
-    loss = nn.CrossEntropyLoss()(logits, labels)
-    
-    return loss
 
-
-def compute_loss(predictions, targets, reg_weight=0.1, contrast_weight=0.1):
+def compute_loss(predictions, targets, reg_weight=0.1, bt_weight=0.1):
     """
-    Computes total loss including MSE, variance, covariance, and contrastive losses.
-
+    Computes total loss including MSE, VICReg components, and Barlow Twins loss.
+    
     Args:
-        predictions (torch.Tensor): Predicted embeddings.
-        targets (torch.Tensor): Target embeddings.
-        reg_weight (float): Weight for regularization losses.
-        contrast_weight (float): Weight for contrastive loss.
-
-    Returns:
-        torch.Tensor: Total loss.
+        predictions (torch.Tensor): Predicted embeddings
+        targets (torch.Tensor): Target embeddings
+        reg_weight (float): Weight for VICReg losses
+        bt_weight (float): Weight for Barlow Twins loss
     """
+    # Reshape if needed (batch_size * seq_len, embed_dim)
+    if len(predictions.shape) > 2:
+        pred_flat = predictions.reshape(-1, predictions.size(-1))
+        target_flat = targets.reshape(-1, targets.size(-1))
+    else:
+        pred_flat = predictions
+        target_flat = targets
 
-    mse_loss = nn.MSELoss()(predictions, targets)
-    var_loss = variance_regularization(predictions)
-    cov_loss = covariance_regularization(predictions)
-    contrast_loss = contrastive_loss(predictions, targets)
-
-    total_loss = mse_loss + reg_weight * (var_loss + cov_loss) + contrast_weight * contrast_loss
+    # Basic reconstruction loss
+    mse = nn.MSELoss()(predictions, targets)
+    
+    # VICReg components
+    var_loss = variance_loss(pred_flat) + variance_loss(target_flat)
+    cov_loss = covariance_loss(pred_flat) + covariance_loss(target_flat)
+    
+    # Barlow Twins loss
+    bt_loss = barlow_twins_loss(pred_flat, target_flat)
+    
+    # Combine all losses
+    total_loss = mse + reg_weight * (var_loss + cov_loss) + bt_weight * bt_loss
     
     return total_loss
 
@@ -146,7 +144,7 @@ def train_model(
             predictions, targets = model(states, actions)
 
             # Compute loss
-            loss = compute_loss(predictions, targets, reg_weight=0.8, contrast_weight=0.8)
+            loss = compute_loss(predictions, targets, reg_weight=0.1, bt_weight=0.005)
             epoch_loss += loss.item()
 
             # Backpropagation
