@@ -146,20 +146,32 @@ class RecurrentJEPA(nn.Module):
         batch_size = states.shape[0]
 
         if training:
-            # Original JEPA training code
-            target_embeddings = [
-                self.target_encoder(states[:, t]) for t in range(states.shape[1])
-            ]
-            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
+            # During training, we need to handle the full sequence
+            if states.shape[1] == 1:  # If we only get initial state
+                s_encoded = self.encoder(states[:, 0])
 
-            predictions = []
-            for t in range(actions.shape[1]):  # trajectory_length - 1
-                s_encoded = self.predictor(s_encoded, actions[:, t])
-                predictions.append(s_encoded)
+                predictions = []
+                for t in range(actions.shape[1]):
+                    s_encoded = self.predictor(s_encoded, actions[:, t])
+                    predictions.append(s_encoded)
 
-            predictions = torch.stack(predictions, dim=1)
-            targets = torch.stack(target_embeddings[1:], dim=1)
-            return predictions, targets
+                predictions = torch.stack(predictions, dim=1)
+                return predictions  # For probing, we only need predictions
+            else:
+                # Original JEPA training code for full sequence
+                target_embeddings = [
+                    self.target_encoder(states[:, t]) for t in range(states.shape[1])
+                ]
+                s_encoded = self.encoder(states[:, 0])
+
+                predictions = []
+                for t in range(actions.shape[1]):
+                    s_encoded = self.predictor(s_encoded, actions[:, t])
+                    predictions.append(s_encoded)
+
+                predictions = torch.stack(predictions, dim=1)
+                targets = torch.stack(target_embeddings[1:], dim=1)
+                return predictions, targets
         else:
             # Evaluation mode - use only initial state
             assert states.shape[1] == 1, "Evaluation expects only initial state"
