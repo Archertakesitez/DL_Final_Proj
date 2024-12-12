@@ -75,7 +75,7 @@ class ResNetEncoder(nn.Module):
 
         out = self.resnet(x)
 
-        return self.dropout(self.norm(x))
+        return self.dropout(self.norm(out))
     
 
     def clip_gradients(self):
