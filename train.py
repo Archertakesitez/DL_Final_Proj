@@ -160,12 +160,6 @@ def train_model(
 
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {e + 1}/{epochs}, Average Loss: {avg_loss:.4f}")
-
-        if avg_loss < best_loss:
-            best_loss = avg_loss
-            torch.save(model.state_dict(), save_path)
-            print(f"New best loss: {best_loss:.4f}. Model saved to {save_path}.")
-
         
         if avg_loss < best_loss - 1e-5:
             best_loss = avg_loss
