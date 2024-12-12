@@ -185,8 +185,8 @@ def main():
     # Hyperparameters
     lr = 1e-4
     weight_decay = 1e-5
-    epochs = 10
-    embed_dim = 768
+    epochs = 20
+    embed_dim = 1024
     patience=5
 
     # Define data, model, and optimizer
