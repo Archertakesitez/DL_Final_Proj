@@ -5,6 +5,27 @@ from dataset import WallDataset
 from torch.nn.functional import mse_loss
 
 
+class ViTEncoder(nn.Module):
+    def __init__(self, embed_dim=768, in_channels=2):
+        super(ViTEncoder, self).__init__()
+        # Load pretrained ViT but modify for our input
+        self.vit = create_model(
+            "vit_base_patch16_224",
+            pretrained=False,
+            num_classes=0,  # Remove classification head
+            in_chans=in_channels,
+        )
+
+        # Add projection to get desired embedding dimension
+        self.projection = nn.Linear(self.vit.num_features, embed_dim)
+
+    def forward(self, x):
+        # ViT expects [B, C, H, W]
+        x = self.vit(x)  # Returns [B, vit_dim]
+        x = self.projection(x)  # Project to desired dimension
+        return x
+
+
 class CNNEncoder(nn.Module):
     def __init__(self, embed_dim=768, in_channels=2):
         super(CNNEncoder, self).__init__()
@@ -100,8 +121,8 @@ class RecurrentPredictor(nn.Module):
 class RecurrentJEPA(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2, momentum=0.99):
         super(RecurrentJEPA, self).__init__()
-        self.encoder = CNNEncoder(embed_dim=embed_dim)
-        self.target_encoder = CNNEncoder(embed_dim=embed_dim)
+        self.encoder = ViTEncoder(embed_dim=embed_dim)
+        self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
         self.repr_dim = embed_dim
         self.momentum = momentum
