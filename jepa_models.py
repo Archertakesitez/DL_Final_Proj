@@ -9,10 +9,10 @@ class ViTEncoder(nn.Module):
         self.vit = create_model(
             "vit_base_patch16_224",
             pretrained=False,
-            img_size=64,  # Corrected to match input size
+            img_size=65,  # Changed from 64 to 65 to match input
             in_chans=2,   # 2 channels: agent and walls
             num_classes=0,
-            patch_size=8  # Smaller patch size for 64x64 images
+            patch_size=5  # Adjusted patch size to work with 65x65
         )
         # Simple projection to ensure stable training
         self.projection = nn.Sequential(
