@@ -6,7 +6,7 @@ from torch.nn.functional import mse_loss
 
 
 class ViTEncoder(nn.Module):
-    def __init__(self, embed_dim=768, in_channels=2):
+    def __init__(self, embed_dim=768, in_channels=2, image_size=65, patch_size=16):
         super(ViTEncoder, self).__init__()
         # Load pretrained ViT but modify for our input
         self.vit = create_model(
@@ -14,15 +14,16 @@ class ViTEncoder(nn.Module):
             pretrained=False,
             num_classes=0,  # Remove classification head
             in_chans=in_channels,
+            img_size=image_size,  # Match your input size
+            patch_size=patch_size,  # Adjust patch size to get ~17 patches
         )
 
         # Add projection to get desired embedding dimension
         self.projection = nn.Linear(self.vit.num_features, embed_dim)
 
     def forward(self, x):
-        # ViT expects [B, C, H, W]
-        x = self.vit(x)  # Returns [B, vit_dim]
-        x = self.projection(x)  # Project to desired dimension
+        x = self.vit(x)
+        x = self.projection(x)
         return x
 
 
