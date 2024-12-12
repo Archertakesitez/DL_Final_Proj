@@ -173,11 +173,11 @@ def train_model(
                 f"No improvement for {patience_counter} epochs. Best loss: {best_loss:.4f}"
             )
 
-            # if patience_counter >= patience:
-            #     print(
-            #         f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
-            #     )
-            #     break
+            if patience_counter >= patience:
+                print(
+                    f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
+                )
+                break
 
 
 def main():
@@ -187,6 +187,7 @@ def main():
     weight_decay = 1e-5
     epochs = 10
     embed_dim = 768
+    patience=5
 
     # Define data, model, and optimizer
     device = get_device()
@@ -195,7 +196,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Train the model
-    train_model(model, train_dataloader, optimizer, epochs, device, save_path)
+    train_model(model, train_dataloader, optimizer, epochs, device, patience=5, save_path=save_path)
 
 
 if __name__ == "__main__":
