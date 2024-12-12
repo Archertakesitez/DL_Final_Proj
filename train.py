@@ -186,7 +186,7 @@ def main():
     lr = 1e-4
     weight_decay = 1e-5
     epochs = 20
-    embed_dim = 768
+    embed_dim = 512
     patience=5
 
     # Define data, model, and optimizer

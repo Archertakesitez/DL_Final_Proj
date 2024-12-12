@@ -4,6 +4,7 @@ import torch.nn as nn
 from dataset import WallDataset
 from torch.nn.functional import mse_loss
 from timm.models.vision_transformer import VisionTransformer
+from torchvision.models import resnet18
 
 
 
@@ -28,6 +29,45 @@ class ViTEncoder(nn.Module):
         # x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
         x = self.vit(x)
         return self.projection(x)
+    
+
+class ResNetEncoder(nn.Module):
+    def __init__(self, embed_dim=512):
+        """
+        Custom ResNet model for 65x65 images.
+
+        Args:
+            embed_dim (int): Size of the final embedding dimension.
+        """
+        super(ResNetEncoder, self).__init__()
+        # Load ResNet-18 backbone
+        self.resnet = resnet18(pretrained=False)
+        
+        # Modify the first convolution layer to handle 2-channel inputs
+        self.resnet.conv1 = nn.Conv2d(
+            2, 64, kernel_size=3, stride=1, padding=1, bias=False
+        )
+        
+        # Remove max-pooling to preserve more spatial information
+        self.resnet.maxpool = nn.Identity()
+        
+        # Replace the fully connected layer with a projection layer
+        self.resnet.fc = nn.Linear(512, embed_dim)
+
+        self.dropout = nn.Dropout(0.2)
+
+    
+    def forward(self, x):
+        """
+        Forward pass through the custom ResNet.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, 2, 65, 65).
+
+        Returns:
+            torch.Tensor: Feature embeddings of shape (batch_size, embed_dim).
+        """
+        return self.dropout(self.resnet(x))
 
 
 # class RecurrentPredictor(nn.Module):
@@ -44,7 +84,7 @@ class ViTEncoder(nn.Module):
 
 
 class RecurrentPredictor(nn.Module):
-    def __init__(self, embed_dim=768, action_dim=2):
+    def __init__(self, embed_dim=512, action_dim=2):
         super(RecurrentPredictor, self).__init__()
         self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim)
         self.fc2 = nn.Linear(embed_dim, embed_dim)
@@ -94,10 +134,13 @@ class RecurrentPredictor(nn.Module):
 
 
 class RecurrentJEPA(nn.Module):
-    def __init__(self, embed_dim=768, action_dim=2, momentum=0.99):
+    def __init__(self, embed_dim=512, action_dim=2):
         super(RecurrentJEPA, self).__init__()
-        self.encoder = ViTEncoder(embed_dim=embed_dim)
-        self.target_encoder = ViTEncoder(embed_dim=embed_dim)
+        # self.encoder = ViTEncoder(embed_dim=embed_dim)
+        # self.target_encoder = ViTEncoder(embed_dim=embed_dim)
+        
+        self.encoder = ResNetEncoder(embed_dim=embed_dim)
+        self.target_encoder = ResNetEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
         # self.repr_dim = embed_dim
         # self.momentum = momentum
