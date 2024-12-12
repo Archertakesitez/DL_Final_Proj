@@ -1,128 +1,107 @@
 import torch
 from timm import create_model
 import torch.nn as nn
-from dataset import WallDataset
-from torch.nn.functional import mse_loss
 
 
 class ViTEncoder(nn.Module):
     def __init__(self, embed_dim=768):
         super(ViTEncoder, self).__init__()
         self.vit = create_model(
-            "vit_base_patch16_224",  # ViT base model with patch size 16
-            pretrained=False,  # Do not load pretrained weights
-            img_size=65,  # Input image size
-            in_chans=2,  # Number of input channels
-            num_classes=0,  # Remove classification head
+            "vit_base_patch16_224",
+            pretrained=False,
+            img_size=64,  # Corrected to match input size
+            in_chans=2,   # 2 channels: agent and walls
+            num_classes=0,
+            patch_size=8  # Smaller patch size for 64x64 images
         )
-        self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
+        # Simple projection to ensure stable training
+        self.projection = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, embed_dim)
+        )
 
     def forward(self, x):
-        # x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
         x = self.vit(x)
         return self.projection(x)
-
-
-# class RecurrentPredictor(nn.Module):
-#     def __init__(self, embed_dim=768, action_dim=2, hidden_dim=512):
-#         super(RecurrentPredictor, self).__init__()
-#         self.rnn = nn.GRU(embed_dim + action_dim, hidden_dim, batch_first=True)
-#         self.fc = nn.Linear(hidden_dim, embed_dim)
-
-#     def forward(self, state_embeddings, actions):
-#         # Concatenate state embeddings and actions along time dimension
-#         combined = torch.cat([state_embeddings, actions], dim=-1)
-#         rnn_out, _ = self.rnn(combined)  # RNN outputs hidden states over time
-#         return self.fc(rnn_out)  # Map RNN hidden states to predicted embeddings
 
 
 class RecurrentPredictor(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2):
         super(RecurrentPredictor, self).__init__()
-        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim)
-        self.fc2 = nn.Linear(embed_dim, embed_dim)
+        # Simple MLP for state-action prediction
+        self.net = nn.Sequential(
+            nn.Linear(embed_dim + action_dim, embed_dim),
+            nn.LayerNorm(embed_dim),
+            nn.GELU(),
+            nn.Linear(embed_dim, embed_dim),
+            nn.LayerNorm(embed_dim)
+        )
 
     def forward(self, state_embedding, action):
-        x = torch.cat(
-            [state_embedding, action], dim=-1
-        )  # Concatenate embeddings and action
-        x = torch.relu(self.fc1(x))
-        return self.fc2(x)
-
-
-# class RecurrentJEPA(nn.Module):
-#     def __init__(self, embed_dim=768, action_dim=2, hidden_dim=512):
-#         super(RecurrentJEPA, self).__init__()
-#         self.encoder = ViTEncoder(embed_dim=embed_dim)
-#         self.target_encoder = ViTEncoder(embed_dim=embed_dim)
-#         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim, hidden_dim=hidden_dim)
-
-#     def forward(self, states, actions):
-#         num_trajectories, trajectory_length, _, _, _ = states.shape
-#         device = states.device
-
-#         # Initialize lists to store embeddings
-#         encoded_states = []
-#         target_states = []
-
-#         # Encode states timestep by timestep
-#         for t in range(trajectory_length):
-#             # Encode current timestep states
-#             encoded_state = self.encoder(states[:, t])  # (num_trajectories, embed_dim)
-#             target_state = self.target_encoder(states[:, t])  # Target encoder
-#             encoded_states.append(encoded_state)
-#             target_states.append(target_state)
-
-#         # Stack encoded states across time
-#         encoded_states = torch.stack(encoded_states, dim=1)  # (num_trajectories, trajectory_length, embed_dim)
-#         target_states = torch.stack(target_states, dim=1)  # (num_trajectories, trajectory_length, embed_dim)
-
-#         # Pass state-action sequence to predictor
-#         predicted_embeddings = self.predictor(
-#             encoded_states[:, :-1],  # Exclude the last state for predictions
-#             actions
-#         )
-
-#         return predicted_embeddings, target_states[:, 1:]  # Exclude the initial state from targets
+        """
+        Implements s̃ₙ = Predφ(s̃ₙ₋₁, uₙ₋₁)
+        """
+        x = torch.cat([state_embedding, action], dim=-1)
+        return self.net(x)
 
 
 class RecurrentJEPA(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2):
         super(RecurrentJEPA, self).__init__()
         self.encoder = ViTEncoder(embed_dim=embed_dim)
-        self.target_encoder = ViTEncoder(embed_dim=embed_dim)  # Optionally shared
+        self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
-        self.repr_dim = embed_dim  # Set repr_dim to the embedding dimension (768)
+        self.repr_dim = embed_dim
+        
+        # Initialize target encoder as copy of encoder
+        for param_q, param_k in zip(self.encoder.parameters(), self.target_encoder.parameters()):
+            param_k.data.copy_(param_q.data)
+            param_k.requires_grad = False
+
+    @torch.no_grad()
+    def _momentum_update_target_encoder(self, momentum=0.99):
+        """
+        Momentum update of target encoder
+        """
+        for param_q, param_k in zip(self.encoder.parameters(), self.target_encoder.parameters()):
+            param_k.data = param_k.data * momentum + param_q.data * (1. - momentum)
 
     def forward(self, states, actions, training=True):
+        """
+        Implements recurrent JEPA:
+        s̃₀ = s₀ = Encθ(o₀)
+        s̃ₙ = Predφ(s̃ₙ₋₁, uₙ₋₁)
+        """
         batch_size, trajectory_length, _, _, _ = states.shape
-
+        
         if training:
-            # Use all timesteps during training
-            with torch.no_grad():
-                target_embeddings = [
-                    self.target_encoder(states[:, t]) for t in range(trajectory_length)
-                ]
-                targets = torch.stack(target_embeddings[1:], dim=1)
+            # Update target encoder
+            self._momentum_update_target_encoder()
             
-            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
-
+            # Initial state encoding: s̃₀ = s₀ = Encθ(o₀)
+            s_tilde = self.encoder(states[:, 0])
+            
+            # Get target encodings
+            with torch.no_grad():
+                target_states = [
+                    self.target_encoder(states[:, t]) 
+                    for t in range(1, trajectory_length)
+                ]
+                targets = torch.stack(target_states, dim=1)
+            
+            # Recurrent predictions: s̃ₙ = Predφ(s̃ₙ₋₁, uₙ₋₁)
             predictions = []
-            for t in range(actions.shape[1]):  # trajectory_length - 1
-                s_encoded = self.predictor(s_encoded, actions[:, t])
-                predictions.append(s_encoded)
-
+            for t in range(trajectory_length - 1):
+                s_tilde = self.predictor(s_tilde, actions[:, t])
+                predictions.append(s_tilde)
+            
             predictions = torch.stack(predictions, dim=1)
-
             return predictions, targets
         else:
-            # Use only the first timestep during inference
-            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
-
+            # For inference/probing
+            s_tilde = self.encoder(states[:, 0])
             predictions = []
-            for t in range(actions.shape[1]):  # trajectory_length - 1
-                s_encoded = self.predictor(s_encoded, actions[:, t])
-                predictions.append(s_encoded)
-
-            predictions = torch.stack(predictions, dim=1)
-            return predictions
+            for t in range(actions.shape[1]):
+                s_tilde = self.predictor(s_tilde, actions[:, t])
+                predictions.append(s_tilde)
+            return torch.stack(predictions, dim=1)
