@@ -94,7 +94,6 @@ class ProbingEvaluator:
         optimizer_pred_prober = torch.optim.Adam(all_parameters, config.lr)
 
         step = 0
-
         batch_size = dataset.batch_size
         batch_steps = None
 
@@ -110,25 +109,23 @@ class ProbingEvaluator:
 
         for epoch in tqdm(range(epochs), desc=f"Probe prediction epochs"):
             for batch in tqdm(dataset, desc="Probe prediction step"):
-                ################################################################################
-                # TODO: Forward pass through your model
                 init_states = batch.states  # BS, T, C, H, W
-
+                
                 try:
-                    pred_encs, targets = model(
-                        states=init_states, actions=batch.actions, training=True
-                    )
+                    # Get predictions from model
+                    pred_encs = model(states=init_states, actions=batch.actions, training=False)
                     if pred_encs is None:
                         print("Skipping batch - no valid predictions")
                         continue
+                    
+                    # Ensure pred_encs has shape [T, BS, D]
+                    if len(pred_encs.shape) == 2:
+                        # If pred_encs is [BS*T, D], reshape it
+                        T = init_states.shape[
 
-                    pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
                 except RuntimeError as e:
                     print(f"Error in forward pass: {e}")
                     continue
-
-                # Make sure pred_encs has shape (T, BS, D) at this point
-                ################################################################################
 
                 pred_encs = pred_encs.detach()
 
