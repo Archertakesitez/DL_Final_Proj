@@ -3,17 +3,24 @@ from timm import create_model
 import torch.nn as nn
 from dataset import WallDataset
 from torch.nn.functional import mse_loss
+from timm.models.vision_transformer import VisionTransformer
+
 
 
 class ViTEncoder(nn.Module):
     def __init__(self, embed_dim=768):
         super(ViTEncoder, self).__init__()
-        self.vit = create_model(
-            "vit_base_patch16_224",  # ViT base model with patch size 16
-            pretrained=False,  # Do not load pretrained weights
-            img_size=65,  # Input image size
-            in_chans=2,  # Number of input channels
-            num_classes=0,  # Remove classification head
+        self.vit = VisionTransformer(
+            img_size=65,  # Input image size (65x65)
+            patch_size=16,  # Patch size (16x16)
+            in_chans=2,  # Number of input channels (e.g., 2-channel images)
+            num_classes=0,  # Remove classification head for feature extraction
+            embed_dim=embed_dim,  # Embedding dimension for tokens
+            depth=24,  # Number of transformer layers
+            num_heads=16,  # Number of attention heads
+            mlp_ratio=4.0,  # MLP hidden layer size = embed_dim * 4
+            qkv_bias=True,  # Allow biases in query/key/value projections
+            norm_layer=nn.LayerNorm  # Use LayerNorm
         )
         self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
 
@@ -114,12 +121,11 @@ class RecurrentJEPA(nn.Module):
 
         if training:
             # Use all timesteps during training
-            with torch.no_grad():
-                target_embeddings = [
-                    self.target_encoder(states[:, t]) for t in range(trajectory_length)
-                ]
+            target_embeddings = [
+                self.target_encoder(states[:, t]) for t in range(trajectory_length)
+            ]
 
-                targets = torch.stack(target_embeddings[1:], dim=1)
+            targets = torch.stack(target_embeddings[1:], dim=1)
 
             s_encoded = self.encoder(states[:, 0])  # Initial state embedding
 
