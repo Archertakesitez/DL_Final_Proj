@@ -45,7 +45,7 @@ def load_data(device):
 def load_model(device):
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
-    embed_dim = 768
+    embed_dim = 512
     action_dim = 2  # As per your dataset
 
     # Initialize the RecurrentJEPA model
