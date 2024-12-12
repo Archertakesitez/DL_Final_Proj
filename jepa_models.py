@@ -99,22 +99,22 @@ class RecurrentJEPA(nn.Module):
         self.encoder = ViTEncoder(embed_dim=embed_dim)
         self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
-        self.repr_dim = embed_dim
-        self.momentum = momentum
+        # self.repr_dim = embed_dim
+        # self.momentum = momentum
 
-        # Initialize target encoder as a copy of the encoder
-        for param_q, param_k in zip(
-            self.encoder.parameters(), self.target_encoder.parameters()
-        ):
-            param_k.data.copy_(
-                param_q.data
-            )  # Initialize target encoder with encoder weights
-            param_k.requires_grad = (
-                False  # Target encoder should not be updated by gradients
-            )
+        # # Initialize target encoder as a copy of the encoder
+        # for param_q, param_k in zip(
+        #     self.encoder.parameters(), self.target_encoder.parameters()
+        # ):
+        #     param_k.data.copy_(
+        #         param_q.data
+        #     )  # Initialize target encoder with encoder weights
+        #     param_k.requires_grad = (
+        #         False  # Target encoder should not be updated by gradients
+        #     )
 
         # Consider adding dropout for regularization
-        self.dropout = nn.Dropout(0.1)  # Optional
+        self.dropout = nn.Dropout(0.2)  # Optional
 
     def forward(self, states, actions, training=True):
         batch_size, trajectory_length, _, _, _ = states.shape
