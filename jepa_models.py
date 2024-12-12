@@ -32,7 +32,7 @@ class ViTEncoder(nn.Module):
     
 
 class ResNetEncoder(nn.Module):
-    def __init__(self, embed_dim=512):
+    def __init__(self, embed_dim=512, clip_value=1.0):
         """
         Custom ResNet model for 65x65 images.
 
@@ -40,6 +40,9 @@ class ResNetEncoder(nn.Module):
             embed_dim (int): Size of the final embedding dimension.
         """
         super(ResNetEncoder, self).__init__()
+
+        self.clip_value = clip_value
+
         # Load ResNet-18 backbone
         self.resnet = resnet18(pretrained=False)
         
@@ -54,6 +57,8 @@ class ResNetEncoder(nn.Module):
         # Replace the fully connected layer with a projection layer
         self.resnet.fc = nn.Linear(512, embed_dim)
 
+        self.norm = nn.LayerNorm(embed_dim)
+
         self.dropout = nn.Dropout(0.2)
 
     
@@ -67,7 +72,19 @@ class ResNetEncoder(nn.Module):
         Returns:
             torch.Tensor: Feature embeddings of shape (batch_size, embed_dim).
         """
-        return self.dropout(self.resnet(x))
+
+        out = self.resnet(x)
+
+        return self.dropout(self.norm(x))
+    
+
+    def clip_gradients(self):
+        """
+        Clip gradients to stabilize training.
+        """
+        for param in self.parameters():
+            if param.grad is not None:
+                param.grad.data.clamp_(-self.clip_value, self.clip_value)
 
 
 # class RecurrentPredictor(nn.Module):
@@ -84,16 +101,19 @@ class ResNetEncoder(nn.Module):
 
 
 class RecurrentPredictor(nn.Module):
-    def __init__(self, embed_dim=512, action_dim=2):
+    def __init__(self, embed_dim=512, proj_dim=128):
         super(RecurrentPredictor, self).__init__()
-        self.fc1 = nn.Linear(embed_dim + action_dim, embed_dim)
+        self.fc1 = nn.Linear(embed_dim + proj_dim, embed_dim)
+        self.norm = nn.LayerNorm(embed_dim)
         self.fc2 = nn.Linear(embed_dim, embed_dim)
 
     def forward(self, state_embedding, action):
         x = torch.cat(
             [state_embedding, action], dim=-1
         )  # Concatenate embeddings and action
-        x = torch.relu(self.fc1(x))
+
+        x = self.norm(self.fc1(x))
+        x = torch.relu(x)
         return self.fc2(x)
 
 
@@ -134,15 +154,17 @@ class RecurrentPredictor(nn.Module):
 
 
 class RecurrentJEPA(nn.Module):
-    def __init__(self, embed_dim=512, action_dim=2):
+    def __init__(self, embed_dim=512, action_dim=2, proj_dim=128):
         super(RecurrentJEPA, self).__init__()
         # self.encoder = ViTEncoder(embed_dim=embed_dim)
         # self.target_encoder = ViTEncoder(embed_dim=embed_dim)
         
         self.encoder = ResNetEncoder(embed_dim=embed_dim)
         self.target_encoder = ResNetEncoder(embed_dim=embed_dim)
+        self.action_proj = nn.Linear(action_dim, proj_dim)
+        self.proj_norm = nn.LayerNorm(proj_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
-        # self.repr_dim = embed_dim
+        self.repr_dim = embed_dim
         # self.momentum = momentum
 
         # # Initialize target encoder as a copy of the encoder
@@ -174,7 +196,8 @@ class RecurrentJEPA(nn.Module):
 
             predictions = []
             for t in range(actions.shape[1]):  # trajectory_length - 1
-                s_encoded = self.predictor(s_encoded, actions[:, t])
+                action_proj = self.action_proj(actions[:, t])
+                s_encoded = self.predictor(s_encoded, action_proj)
                 predictions.append(s_encoded)
 
             predictions = torch.stack(predictions, dim=1)
@@ -186,11 +209,30 @@ class RecurrentJEPA(nn.Module):
 
             predictions = []
             for t in range(actions.shape[1]):  # trajectory_length - 1
-                s_encoded = self.predictor(s_encoded, actions[:, t])
+                action_proj = self.proj_norm(self.action_proj(actions[:, t]))
+                s_encoded = self.predictor(s_encoded, action_proj)
                 predictions.append(s_encoded)
 
             predictions = torch.stack(predictions, dim=1)
+
             return predictions
+        
+
+    def clip_gradients(self):
+        """
+        Clip gradients for all submodules of RecurrentJEPA.
+        """
+        # Clip gradients for the encoder
+        self.encoder.clip_gradients()
+
+        # Clip gradients for the target encoder
+        self.target_encoder.clip_gradients()
+
+        # Optionally clip gradients for the predictor (if needed)
+        for param in self.predictor.parameters():
+            if param.grad is not None:
+                param.grad.data.clamp_(-1.0, 1.0)
+
 
     @torch.no_grad()
     def _momentum_update_target_encoder(self):

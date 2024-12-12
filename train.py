@@ -154,6 +154,7 @@ def train_model(
             # Backpropagation
             optimizer.zero_grad()
             loss.backward()
+            model.clip_gradients()
             optimizer.step()
 
             pbar.set_postfix({"Loss": loss.item()})
@@ -187,11 +188,12 @@ def main():
     weight_decay = 1e-5
     epochs = 20
     embed_dim = 512
+    proj_dim = 128
     patience=5
 
     # Define data, model, and optimizer
     device = get_device()
-    model = RecurrentJEPA(embed_dim=embed_dim)
+    model = RecurrentJEPA(embed_dim=embed_dim, proj_dim=proj_dim)
     train_dataloader = load_data(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
