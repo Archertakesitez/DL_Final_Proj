@@ -114,7 +114,7 @@ class RecurrentJEPA(nn.Module):
 
         if training:
             # Use all timesteps during training
-            with torch.no_grad:
+            with torch.no_grad():
                 target_embeddings = [
                     self.target_encoder(states[:, t]) for t in range(trajectory_length)
                 ]
