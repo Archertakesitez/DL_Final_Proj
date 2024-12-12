@@ -136,7 +136,7 @@ def main():
     train_dataloader = load_data(device)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr/100)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr/100)
     
     train_model(
         model=model,
