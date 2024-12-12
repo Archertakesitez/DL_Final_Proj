@@ -173,11 +173,11 @@ def train_model(
                 f"No improvement for {patience_counter} epochs. Best loss: {best_loss:.4f}"
             )
 
-            if patience_counter >= patience:
-                print(
-                    f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
-                )
-                break
+            # if patience_counter >= patience:
+            #     print(
+            #         f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
+            #     )
+            #     break
 
 
 def main():

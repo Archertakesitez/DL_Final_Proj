@@ -114,9 +114,13 @@ class RecurrentJEPA(nn.Module):
 
         if training:
             # Use all timesteps during training
-            target_embeddings = [
-                self.target_encoder(states[:, t]) for t in range(trajectory_length)
-            ]
+            with torch.no_grad:
+                target_embeddings = [
+                    self.target_encoder(states[:, t]) for t in range(trajectory_length)
+                ]
+
+                targets = torch.stack(target_embeddings[1:], dim=1)
+
             s_encoded = self.encoder(states[:, 0])  # Initial state embedding
 
             predictions = []
@@ -125,7 +129,7 @@ class RecurrentJEPA(nn.Module):
                 predictions.append(s_encoded)
 
             predictions = torch.stack(predictions, dim=1)
-            targets = torch.stack(target_embeddings[1:], dim=1)
+
             return predictions, targets
         else:
             # Use only the first timestep during inference
