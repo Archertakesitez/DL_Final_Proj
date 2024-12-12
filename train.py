@@ -26,15 +26,35 @@ def load_data(device):
     return train_ds
 
 
-def compute_loss(predictions, targets, reg_weight=0.1):
-    # Compute MSE loss
-    mse_loss = nn.MSELoss()(predictions, targets)
+def compute_vicreg_loss(
+    predictions, targets, sim_weight=25.0, var_weight=25.0, cov_weight=1.0
+):
+    # Reshape from [batch_size, seq_len, embed_dim] to [batch_size * seq_len, embed_dim]
+    predictions = predictions.reshape(-1, predictions.shape[-1])
+    targets = targets.reshape(-1, targets.shape[-1])
 
-    # Regularization (variance regularization to prevent collapse)
-    batch_mean = torch.mean(predictions, dim=0)
-    reg_loss = torch.mean((predictions - batch_mean) ** 2)
+    # Invariance loss (similar to MSE)
+    sim_loss = nn.MSELoss()(predictions, targets)
 
-    return mse_loss + reg_weight * reg_loss
+    # Variance loss
+    std_p = torch.sqrt(predictions.var(dim=0) + 1e-04)
+    std_loss = torch.mean(torch.relu(1 - std_p))
+
+    # Covariance loss
+    predictions = predictions - predictions.mean(dim=0)
+    cov_p = (predictions.T @ predictions) / (predictions.shape[0] - 1)
+    cov_loss = off_diagonal(cov_p).pow_(2).sum() / predictions.shape[1]
+
+    # Combine losses
+    loss = sim_weight * sim_loss + var_weight * std_loss + cov_weight * cov_loss
+
+    return loss
+
+
+def off_diagonal(x):
+    """Return off-diagonal elements of a square matrix."""
+    n = x.shape[0]
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
 def train_model(
@@ -66,7 +86,7 @@ def train_model(
 
             # Forward pass
             predictions, targets = model(states, actions)
-            loss = compute_loss(predictions, targets)
+            loss = compute_vicreg_loss(predictions, targets)
             epoch_loss += loss.item()
 
             # Backpropagation

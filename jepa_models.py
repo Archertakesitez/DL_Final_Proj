@@ -5,22 +5,33 @@ from dataset import WallDataset
 from torch.nn.functional import mse_loss
 
 
-class ViTEncoder(nn.Module):
-    def __init__(self, embed_dim=768):
-        super(ViTEncoder, self).__init__()
-        self.vit = create_model(
-            "vit_base_patch16_224",  # ViT base model with patch size 16
-            pretrained=False,  # Do not load pretrained weights
-            img_size=65,  # Input image size
-            in_chans=2,  # Number of input channels
-            num_classes=0,  # Remove classification head
+class CNNEncoder(nn.Module):
+    def __init__(self, embed_dim=768, in_channels=2):
+        super(CNNEncoder, self).__init__()
+
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
         )
-        self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
+
+        # Calculate the size of flattened features
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, in_channels, 65, 65)
+            dummy_output = self.conv_layers(dummy_input)
+            flattened_size = dummy_output.numel() // dummy_output.size(0)
+
+        self.fc = nn.Sequential(nn.Flatten(), nn.Linear(flattened_size, embed_dim))
 
     def forward(self, x):
-        # x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
-        x = self.vit(x)
-        return self.projection(x)
+        x = self.conv_layers(x)
+        x = self.fc(x)
+        return x
 
 
 # class RecurrentPredictor(nn.Module):
@@ -89,8 +100,8 @@ class RecurrentPredictor(nn.Module):
 class RecurrentJEPA(nn.Module):
     def __init__(self, embed_dim=768, action_dim=2, momentum=0.99):
         super(RecurrentJEPA, self).__init__()
-        self.encoder = ViTEncoder(embed_dim=embed_dim)
-        self.target_encoder = ViTEncoder(embed_dim=embed_dim)
+        self.encoder = CNNEncoder(embed_dim=embed_dim)
+        self.target_encoder = CNNEncoder(embed_dim=embed_dim)
         self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
         self.repr_dim = embed_dim
         self.momentum = momentum
@@ -110,12 +121,12 @@ class RecurrentJEPA(nn.Module):
         self.dropout = nn.Dropout(0.1)  # Optional
 
     def forward(self, states, actions, training=True):
-        batch_size, trajectory_length, _, _, _ = states.shape
+        batch_size = states.shape[0]
 
         if training:
-            # Use all timesteps during training
+            # Original JEPA training code
             target_embeddings = [
-                self.target_encoder(states[:, t]) for t in range(trajectory_length)
+                self.target_encoder(states[:, t]) for t in range(states.shape[1])
             ]
             s_encoded = self.encoder(states[:, 0])  # Initial state embedding
 
@@ -128,11 +139,12 @@ class RecurrentJEPA(nn.Module):
             targets = torch.stack(target_embeddings[1:], dim=1)
             return predictions, targets
         else:
-            # Use only the first timestep during inference
-            s_encoded = self.encoder(states[:, 0])  # Initial state embedding
+            # Evaluation mode - use only initial state
+            assert states.shape[1] == 1, "Evaluation expects only initial state"
+            s_encoded = self.encoder(states[:, 0])
 
             predictions = []
-            for t in range(actions.shape[1]):  # trajectory_length - 1
+            for t in range(actions.shape[1]):
                 s_encoded = self.predictor(s_encoded, actions[:, t])
                 predictions.append(s_encoded)
 

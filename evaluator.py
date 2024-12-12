@@ -112,22 +112,9 @@ class ProbingEvaluator:
             for batch in tqdm(dataset, desc="Probe prediction step"):
                 ################################################################################
                 # TODO: Forward pass through your model
-                init_states = batch.states  # BS, T, C, H, W
-
-                try:
-                    pred_encs, targets = model(
-                        states=init_states, actions=batch.actions, training=True
-                    )
-                    if pred_encs is None:
-                        print("Skipping batch - no valid predictions")
-                        continue
-
-                    pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
-                except RuntimeError as e:
-                    print(f"Error in forward pass: {e}")
-                    continue
-
-                # Make sure pred_encs has shape (T, BS, D) at this point
+                init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
+                pred_encs = model(states=init_states, actions=batch.actions)
+                pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
@@ -223,9 +210,9 @@ class ProbingEvaluator:
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
             # TODO: Forward pass through your model
-            init_states = batch.states  # BS, T, C, H, W
-            pred_encs = model(states=init_states, actions=batch.actions, training=False)
-            pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
+            init_states = batch.states[:, 0:1]  # BS, 1 C, H, W
+            pred_encs = model(states=init_states, actions=batch.actions)
+            pred_encs = pred_encs.transpose(0, 1)
             ################################################################################
 
             target = getattr(batch, "locations").cuda()
