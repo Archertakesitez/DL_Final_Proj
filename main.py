@@ -50,6 +50,10 @@ def load_model(device):
 
     # Initialize the RecurrentJEPA model
     model = RecurrentJEPA(embed_dim=embed_dim, action_dim=action_dim)
+    try:
+        model.repr_dim
+    except:
+        model.repr_dim = embed_dim
 
     # Load the pretrained weights
     checkpoint_path = "model_weights.pth"  # Changed filename
