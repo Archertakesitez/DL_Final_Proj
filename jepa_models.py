@@ -163,7 +163,7 @@ class RecurrentJEPA(nn.Module):
         self.target_encoder = ResNetEncoder(embed_dim=embed_dim)
         self.action_proj = nn.Linear(action_dim, proj_dim)
         self.proj_norm = nn.LayerNorm(proj_dim)
-        self.predictor = RecurrentPredictor(embed_dim=embed_dim, action_dim=action_dim)
+        self.predictor = RecurrentPredictor(embed_dim=embed_dim, proj_dim=proj_dim)
         self.repr_dim = embed_dim
         # self.momentum = momentum
 
