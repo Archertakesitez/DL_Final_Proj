@@ -2,6 +2,7 @@ from typing import NamedTuple, Optional
 import torch
 import numpy as np
 from torchvision import transforms
+from tqdm import tqdm
 
 
 # Define augmentations for states
@@ -63,6 +64,10 @@ class WallDataset:
 
         self.augmentation = augmentation
 
+        # Apply augmentation to the entire dataset
+        if self.augmentation:
+            self.states = self._apply_augmentation_to_all(self.states)
+
     def __len__(self):
         return len(self.states)
 
@@ -74,10 +79,6 @@ class WallDataset:
             locations = torch.from_numpy(self.locations[i]).float().to(self.device)
         else:
             locations = torch.empty(0).to(self.device)
-
-        # Apply augmentation consistently to the entire trajectory
-        if self.augmentation:
-            states = self._apply_augmentation(states)
 
         return WallSample(states=states, locations=locations, actions=actions)
     
@@ -92,13 +93,27 @@ class WallDataset:
         Returns:
             torch.Tensor: Augmented states of the same shape.
         """
+        # augmented_states = []
+        # for t in range(states.shape[0]):  # Loop over trajectory_length
+        #     state = states[t]  # (2, 65, 65)
+        #     # Convert tensor to PIL image, apply augmentation, then back to tensor
+        #     state_aug = self.augmentation(state)
+        #     augmented_states.append(state_aug)
+        # return torch.stack(augmented_states)  # Reconstruct trajectory tensor
+
         augmented_states = []
-        for t in range(states.shape[0]):  # Loop over trajectory_length
-            state = states[t]  # (2, 65, 65)
-            # Convert tensor to PIL image, apply augmentation, then back to tensor
-            state_aug = self.augmentation(state)
-            augmented_states.append(state_aug)
-        return torch.stack(augmented_states)  # Reconstruct trajectory tensor
+
+        for trajectory in tqdm(states, desc="Applying augmentations to dataset"):
+            augmented_trajectory = []
+
+            for frame in trajectory:  # Loop through each frame in the trajectory
+                frame_tensor = torch.from_numpy(frame).float()  # Convert to tensor
+                frame_aug = self.augmentation(frame_tensor)  # Apply augmentation
+                augmented_trajectory.append(frame_aug.numpy())  # Convert back to numpy
+
+            augmented_states.append(np.stack(augmented_trajectory))  # Stack trajectory
+
+        return np.stack(augmented_states)
 
 
 def create_wall_dataloader(
