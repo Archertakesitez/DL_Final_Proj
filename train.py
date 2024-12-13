@@ -43,7 +43,20 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=50.0, cov_coef=2.0):
             + off_diagonal(cov_z2).pow_(2).sum() / D
         )
 
-        loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
+        # Stronger decorrelation between samples
+        z1_norm = F.normalize(z1_t, dim=1)
+        z2_norm = F.normalize(z2_t, dim=1)
+        similarity_matrix = torch.mm(z1_norm, z2_norm.T)
+        decorr_loss = torch.mean(
+            torch.abs(similarity_matrix - torch.eye(z1.shape[0], device=z1.device))
+        )
+
+        loss = (
+            sim_coef * sim_loss
+            + std_coef * std_loss
+            + cov_coef * cov_loss
+            + decorr_loss
+        )
         total_loss += loss
 
     return total_loss / T
