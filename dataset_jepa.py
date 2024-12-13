@@ -54,8 +54,8 @@ class WallDataset:
         augmentation=Augmentation()
     ):
         self.device = device
-        self.states = np.load(f"{data_path}/states.npy", mmap_mode="r")[0:10]
-        self.actions = np.load(f"{data_path}/actions.npy")[0:10]
+        self.states = np.load(f"{data_path}/states.npy", mmap_mode="r")[0:64]
+        self.actions = np.load(f"{data_path}/actions.npy")[0:64]
 
         if probing:
             self.locations = np.load(f"{data_path}/locations.npy")
