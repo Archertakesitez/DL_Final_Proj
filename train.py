@@ -124,7 +124,7 @@ def compute_loss(predictions, targets, var_reg_weight=25, cov_reg_weight=0.1, co
 
 
 def train_model(
-    model, dataloader, optimizer, epochs, device, patience=5, save_path="pretrained_jepa_model.pth"
+    model, dataloader, optimizer, scheduler=None, epochs=10, device='cpu', patience=5, save_path="pretrained_jepa_model.pth"
 ):
     model = model.to(device)
     best_loss = float("inf")
@@ -160,6 +160,9 @@ def train_model(
 
             pbar.set_postfix({"Loss": loss.item()})
 
+        if scheduler:
+            scheduler.step()
+            
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {e + 1}/{epochs}, Average Loss: {avg_loss:.4f}")
         
@@ -200,7 +203,7 @@ def main():
     scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
 
     # Train the model
-    train_model(model, train_dataloader, scheduler, epochs, device, patience=patience, save_path=save_path)
+    train_model(model, train_dataloader, optimizer, scheduler, epochs, device, patience=patience, save_path=save_path)
 
 
 if __name__ == "__main__":
