@@ -5,11 +5,37 @@ from torchvision import transforms
 
 
 # Define augmentations for states
-state_augmentations = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-])
+
+class Augmentation:
+    def __init__(self):
+        # Define augmentations
+        self.augmentations = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=15),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        ])
+
+    def __call__(self, state):
+        """
+        Apply augmentations to a single state (2-channel image).
+
+        Args:
+            state (torch.Tensor): Image tensor of shape (2, 65, 65).
+
+        Returns:
+            torch.Tensor: Augmented image tensor of the same shape.
+        """
+        augmented_channels = []
+        for channel in state:  # Iterate over channels
+            # Convert each channel to PIL image
+            channel_pil = transforms.functional.to_pil_image(channel)
+            # Apply augmentations
+            channel_aug = self.augmentations(channel_pil)
+            # Convert back to tensor
+            augmented_channels.append(transforms.functional.to_tensor(channel_aug))
+
+        # Stack channels back together
+        return torch.stack(augmented_channels)
 
 
 class WallSample(NamedTuple):
@@ -24,7 +50,7 @@ class WallDataset:
         data_path,
         probing=False,
         device="cuda",
-        augmentation=state_augmentations
+        augmentation=Augmentation()
     ):
         self.device = device
         self.states = np.load(f"{data_path}/states.npy", mmap_mode="r")
