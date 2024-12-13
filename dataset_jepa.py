@@ -35,7 +35,7 @@ class Augmentation:
             augmented_channels.append(transforms.functional.to_tensor(channel_aug))
 
         # Stack channels back together
-        return torch.stack(augmented_channels)
+        return torch.stack(augmented_channels).squeeze()
 
 
 class WallSample(NamedTuple):
@@ -78,7 +78,6 @@ class WallDataset:
         # Apply augmentation consistently to the entire trajectory
         if self.augmentation:
             states = self._apply_augmentation(states)
-            print("Performed data augmentation on states")
 
         return WallSample(states=states, locations=locations, actions=actions)
     
