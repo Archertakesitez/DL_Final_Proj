@@ -3,6 +3,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class PositionalEncoding2D(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.channels = channels
+
+        # Create positional encoding
+        h, w = 65, 65  # Your input size
+        y_embed = torch.arange(0, h).float().unsqueeze(1).expand(-1, w)
+        x_embed = torch.arange(0, w).float().unsqueeze(0).expand(h, -1)
+
+        y_embed = y_embed / (h - 1) * 2 - 1
+        x_embed = x_embed / (w - 1) * 2 - 1
+
+        self.register_buffer("pos_enc", torch.stack([x_embed, y_embed], dim=0))
+
+    def forward(self, x):
+        # x shape: [B, C, H, W]
+        B, C, H, W = x.shape
+
+        # Expand positional encoding
+        pos = self.pos_enc.expand(B, -1, -1, -1)  # [B, 2, H, W]
+
+        # Concatenate along channel dimension
+        return torch.cat([x, pos], dim=1)  # [B, C+2, H, W]
+
+
 class Encoder(nn.Module):
     """
     Implements Encθ(oₙ) from the JEPA formulation.
@@ -11,9 +37,11 @@ class Encoder(nn.Module):
 
     def __init__(self, latent_dim=256):
         super().__init__()
-        # Input: (B, 2, 65, 65) - 2 channels: agent position and wall/border layout
+        self.pos_enc = PositionalEncoding2D(2)  # 2 input channels
+
+        # Input: (B, 4, 65, 65) - 2 original channels + 2 positional channels
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(2, 32, kernel_size=4, stride=2, padding=1),  # -> (32, 32, 32)
+            nn.Conv2d(4, 32, kernel_size=4, stride=2, padding=1),  # -> (32, 32, 32)
             nn.BatchNorm2d(32),
             nn.ReLU(True),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # -> (64, 16, 16)
@@ -32,6 +60,8 @@ class Encoder(nn.Module):
         )
 
     def forward(self, x):
+        # Add positional information
+        x = self.pos_enc(x)
         x = self.conv_layers(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
