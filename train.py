@@ -98,7 +98,7 @@ def contrastive_loss(predictions, targets, temperature=0.1):
     return loss
 
 
-def compute_loss(predictions, targets, reg_weight=0.1, contrast_weight=0.1):
+def compute_loss(predictions, targets, var_reg_weight=25, cov_reg_weight=0.1, contrast_weight=0.1):
     """
     Computes total loss including MSE, variance, covariance, and contrastive losses.
 
@@ -113,11 +113,11 @@ def compute_loss(predictions, targets, reg_weight=0.1, contrast_weight=0.1):
     """
 
     mse_loss = nn.MSELoss()(predictions, targets)
-    var_loss = variance_regularization(predictions)
-    cov_loss = covariance_regularization(predictions)
+    var_loss = variance_regularization(predictions) + variance_regularization(targets)
+    cov_loss = covariance_regularization(predictions) + covariance_regularization(targets)
     contrast_loss = contrastive_loss(predictions, targets)
 
-    total_loss = mse_loss + reg_weight * (var_loss + cov_loss) + contrast_weight * contrast_loss
+    total_loss = 25 * mse_loss + var_reg_weight * var_loss + cov_reg_weight * cov_loss + contrast_weight * contrast_loss
     
     return total_loss
 
@@ -148,7 +148,7 @@ def train_model(
             predictions, targets = model(states, actions)
 
             # Compute loss
-            loss = compute_loss(predictions, targets, reg_weight=0.2, contrast_weight=0.2)
+            loss = compute_loss(predictions, targets, var_reg_weight=25, cov_reg_weight=0.1, contrast_weight=0.2)
             epoch_loss += loss.item()
 
             # Backpropagation
@@ -188,7 +188,7 @@ def main():
     weight_decay = 1e-5
     epochs = 20
     embed_dim = 512
-    proj_dim = 128
+    proj_dim = 512
     patience=5
 
     # Define data, model, and optimizer
