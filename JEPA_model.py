@@ -48,8 +48,8 @@ class ViTEncoder(nn.Module):
             in_chans=2,  # Number of input channels (e.g., 2-channel images)
             num_classes=0,  # Remove classification head for feature extraction
             embed_dim=embed_dim,  # Embedding dimension for tokens
-            depth=24,  # Number of transformer layers
-            num_heads=16,  # Number of attention heads
+            depth=10,  # Number of transformer layers (original 24)
+            num_heads=16,  # Number of attention heads (original 16)
             mlp_ratio=4.0,  # MLP hidden layer size = embed_dim * 4
             qkv_bias=True,  # Allow biases in query/key/value projections
             norm_layer=nn.LayerNorm  # Use LayerNorm
