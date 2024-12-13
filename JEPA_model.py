@@ -57,10 +57,9 @@ class Predictor(nn.Module):
 
 
 class JEPAModel(nn.Module):
-    def __init__(self, latent_dim=256, use_momentum=True, momentum=0.99):
+    def __init__(self, latent_dim=256, momentum=0.99):
         super().__init__()
         self.latent_dim = latent_dim
-        self.use_momentum = use_momentum
         self.momentum = momentum
         self.repr_dim = latent_dim  # Required by evaluator.py
 
@@ -69,21 +68,17 @@ class JEPAModel(nn.Module):
         self.predictor = Predictor(latent_dim)
 
         # Target network (momentum-updated)
-        if use_momentum:
-            self.target_encoder = Encoder(latent_dim)
-            # Initialize target network with same weights
-            for param_q, param_k in zip(
-                self.encoder.parameters(), self.target_encoder.parameters()
-            ):
-                param_k.data.copy_(param_q.data)
-                param_k.requires_grad = False
+        self.target_encoder = Encoder(latent_dim)
+        # Initialize target network with same weights
+        for param_q, param_k in zip(
+            self.encoder.parameters(), self.target_encoder.parameters()
+        ):
+            param_k.data.copy_(param_q.data)
+            param_k.requires_grad = False
 
     @torch.no_grad()
     def momentum_update(self):
         """Update target network using momentum"""
-        if not self.use_momentum:
-            return
-
         for param_q, param_k in zip(
             self.encoder.parameters(), self.target_encoder.parameters()
         ):
@@ -91,40 +86,38 @@ class JEPAModel(nn.Module):
                 1.0 - self.momentum
             )
 
-    def forward(self, states, actions):
+    def forward(self, states, actions, training=True):
         """
-        Forward pass implementing recurrent JEPA prediction.
+        LeCun's JEPA forward pass
         Args:
-            states: Observations [B, 1, C, H, W]  # Only initial state
-            actions: Action sequence [B, T-1, 2]  # T-1 actions
+            states: [B, T, 2, 65, 65]
+            actions: [B, T-1, 2]
         Returns:
-            predictions: Predicted latent states [B, T, D]  # T total predictions
+            training=True: (predictions, targets)
+            training=False: predictions
         """
-        B = states.shape[0]
-        T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
-
-        # Initial encoding
-        curr_state = self.encoder(states[:, 0])  # [B, D]
-        predictions = [curr_state]
-
-        # Predict future states
-        for t in range(T - 1):
-            curr_action = actions[:, t]  # [B, 2]
-            curr_state = self.predictor(curr_state, curr_action)
-            predictions.append(curr_state)
-
-        predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-        return predictions
-
-    def compute_target(self, states):
-        """Compute target representations for all states"""
-        B, T = states.shape[:2]
-        target_encoder = self.target_encoder if self.use_momentum else self.encoder
-
-        targets = []
-        for t in range(T):
+        if training:
+            # Get target representations for all future states
             with torch.no_grad():
-                target = target_encoder(states[:, t])
-                targets.append(target)
+                target_embeddings = [
+                    self.target_encoder(states[:, t]) for t in range(1, states.shape[1])
+                ]
+                targets = torch.stack(target_embeddings, dim=1)
 
-        return torch.stack(targets, dim=1)  # [B, T, D]
+            # Get initial state embedding and predict future states
+            z_t = self.encoder(states[:, 0])
+            predictions = []
+            for t in range(actions.shape[1]):
+                z_t = self.predictor(z_t, actions[:, t])
+                predictions.append(z_t)
+            predictions = torch.stack(predictions, dim=1)
+
+            return predictions, targets
+        else:
+            # Evaluation mode - only predict from initial state
+            z_t = self.encoder(states[:, 0])
+            predictions = []
+            for t in range(actions.shape[1]):
+                z_t = self.predictor(z_t, actions[:, t])
+                predictions.append(z_t)
+            return torch.stack(predictions, dim=1)
