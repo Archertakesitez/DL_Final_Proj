@@ -134,7 +134,7 @@ class JEPAModel(nn.Module):
 
         # Predict future states
         for t in range(T - 1):
-            curr_action = actions[:, t]  # [B, 2]
+            curr_action = self.action_encoder(actions[:, t])  # [B, 2] or [B, latent_dim]
             curr_state = self.predictor(curr_state, curr_action)
             predictions.append(curr_state)
 
