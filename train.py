@@ -66,7 +66,7 @@ def train_jepa(
     best_model_state = None
 
     # Initialize with optimizer
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, ...)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3)
 
     for epoch in range(epochs):
         total_loss = 0
@@ -123,7 +123,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 32
-    LEARNING_RATE = 3e-5
+    LEARNING_RATE = 1e-4
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
