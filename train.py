@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from dataset import create_wall_dataloader
+from dataset_jepa import create_wall_dataloader
 from JEPA_model import JEPAModel
 import numpy as np
 from tqdm import tqdm
@@ -122,7 +122,7 @@ def train_jepa(
 
 def main():
     # Hyperparameters
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64
     LEARNING_RATE = 1e-4
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
