@@ -128,6 +128,7 @@ def create_wall_dataloader(
         data_path=data_path,
         probing=probing,
         device=device,
+        augmentation=None
     )
 
     loader = torch.utils.data.DataLoader(
