@@ -66,7 +66,7 @@ class WallDataset:
 
         # Apply augmentation to the entire dataset
         if self.augmentation:
-            self.states = self._apply_augmentation_to_all(self.states)
+            self.states = self._apply_augmentation(self.states)
 
     def __len__(self):
         return len(self.states)
