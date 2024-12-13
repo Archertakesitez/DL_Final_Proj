@@ -56,6 +56,15 @@ class Predictor(nn.Module):
         return self.net(x)
 
 
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        torch.nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.Conv2d):
+        torch.nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+
+
 class JEPAModel(nn.Module):
     def __init__(self, latent_dim=256, momentum=0.99):
         super().__init__()
@@ -74,6 +83,11 @@ class JEPAModel(nn.Module):
         ):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
+
+        # Apply careful initialization
+        self.encoder.apply(init_weights)
+        self.predictor.apply(init_weights)
+        self.target_encoder.apply(init_weights)
 
     @torch.no_grad()
     def momentum_update(self):

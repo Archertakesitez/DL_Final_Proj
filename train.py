@@ -15,8 +15,8 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
-    """VicReg loss computation per timestep"""
+def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=50.0, cov_coef=2.0):
+    """Stronger regularization to prevent collapse"""
     B, T, D = z1.shape
 
     total_loss = 0
@@ -25,15 +25,15 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
         z1_t = z1[:, t]
         z2_t = z2[:, t]
 
-        # Invariance loss
+        # Stronger invariance loss
         sim_loss = F.mse_loss(z1_t, z2_t)
 
-        # Variance loss
+        # Stronger variance loss - crucial for preventing collapse
         std_z1 = torch.sqrt(z1_t.var(dim=0) + 1e-04)
         std_z2 = torch.sqrt(z2_t.var(dim=0) + 1e-04)
         std_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
 
-        # Covariance loss
+        # Stronger covariance loss - prevents dimensional collapse
         z1_t = z1_t - z1_t.mean(dim=0)
         z2_t = z2_t - z2_t.mean(dim=0)
         cov_z1 = (z1_t.T @ z1_t) / (z1_t.shape[0] - 1)
@@ -46,7 +46,26 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
         loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
         total_loss += loss
 
-    return total_loss / T  # Average over timesteps
+    return total_loss / T
+
+
+def monitor_collapse(z1, epoch):
+    """Monitor for signs of collapse"""
+    with torch.no_grad():
+        # Check variance across batch
+        var_per_dim = z1.var(dim=0)
+        active_dims = (var_per_dim > 0.1).sum()
+        mean_var = var_per_dim.mean()
+
+        print(f"Epoch {epoch}")
+        print(f"Active dimensions: {active_dims}/{z1.shape[1]}")
+        print(f"Mean variance: {mean_var:.4f}")
+
+        # Check for similar representations
+        z1_norm = F.normalize(z1, dim=1)
+        similarity = torch.mm(z1_norm, z1_norm.T)
+        mean_sim = similarity.mean()
+        print(f"Mean similarity between samples: {mean_sim:.4f}")
 
 
 def train_jepa(
@@ -98,6 +117,10 @@ def train_jepa(
                     }
                 )
 
+            # Monitor every N batches
+            if batch_idx % 100 == 0:
+                monitor_collapse(predictions[:, 0], epoch)  # Monitor first timestep
+
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch+1}, Average Loss: {avg_loss:.4f}")
 
@@ -125,7 +148,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 32
-    LEARNING_RATE = 3e-5
+    LEARNING_RATE = 1e-4
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
