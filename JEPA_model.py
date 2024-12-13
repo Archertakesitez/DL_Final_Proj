@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from timm.models.vision_transformer import VisionTransformer
 
 
-class Encoder(nn.Module):
+class CNNEncoder(nn.Module):
     """
     Implements Encθ(oₙ) from the JEPA formulation.
     Maps observations to latent representations.
@@ -38,6 +39,29 @@ class Encoder(nn.Module):
         return x
 
 
+class ViTEncoder(nn.Module):
+    def __init__(self, embed_dim=768):
+        super(ViTEncoder, self).__init__()
+        self.vit = VisionTransformer(
+            img_size=65,  # Input image size (65x65)
+            patch_size=16,  # Patch size (16x16)
+            in_chans=2,  # Number of input channels (e.g., 2-channel images)
+            num_classes=0,  # Remove classification head for feature extraction
+            embed_dim=embed_dim,  # Embedding dimension for tokens
+            depth=24,  # Number of transformer layers
+            num_heads=16,  # Number of attention heads
+            mlp_ratio=4.0,  # MLP hidden layer size = embed_dim * 4
+            qkv_bias=True,  # Allow biases in query/key/value projections
+            norm_layer=nn.LayerNorm  # Use LayerNorm
+        )
+        self.projection = nn.Linear(embed_dim, embed_dim)  # Optional projection layer
+
+    def forward(self, x):
+        # x = x.flatten(1, 2)  # Flatten (2, 64, 64) to (128, 64)
+        x = self.vit(x)
+        return self.projection(x)
+
+
 class Predictor(nn.Module):
     def __init__(self, latent_dim=256, action_dim=2):
         super().__init__()
@@ -65,12 +89,13 @@ class JEPAModel(nn.Module):
         self.repr_dim = latent_dim  # Required by evaluator.py
 
         # Online networks
-        self.encoder = Encoder(latent_dim)
-        self.predictor = Predictor(latent_dim)
+        self.encoder = ViTEncoder(latent_dim)
+        self.action_encoder = nn.Linear(2, latent_dim)
+        self.predictor = Predictor(latent_dim, action_dim=latent_dim)
 
         # Target network (momentum-updated)
         if use_momentum:
-            self.target_encoder = Encoder(latent_dim)
+            self.target_encoder = ViTEncoder(latent_dim)
             # Initialize target network with same weights
             for param_q, param_k in zip(
                 self.encoder.parameters(), self.target_encoder.parameters()
