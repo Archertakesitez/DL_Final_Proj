@@ -61,15 +61,14 @@ class JEPAModel(nn.Module):
         super().__init__()
         self.latent_dim = latent_dim
         self.momentum = momentum
-        self.repr_dim = latent_dim  # Required by evaluator.py
+        self.repr_dim = latent_dim
 
-        # Online networks
+        # Online networks for state prediction
         self.encoder = Encoder(latent_dim)
         self.predictor = Predictor(latent_dim)
 
-        # Target network (momentum-updated)
+        # Target network with momentum update (LeCun's approach)
         self.target_encoder = Encoder(latent_dim)
-        # Initialize target network with same weights
         for param_q, param_k in zip(
             self.encoder.parameters(), self.target_encoder.parameters()
         ):
@@ -78,7 +77,7 @@ class JEPAModel(nn.Module):
 
     @torch.no_grad()
     def momentum_update(self):
-        """Update target network using momentum"""
+        """LeCun's momentum update for target network"""
         for param_q, param_k in zip(
             self.encoder.parameters(), self.target_encoder.parameters()
         ):
@@ -86,38 +85,35 @@ class JEPAModel(nn.Module):
                 1.0 - self.momentum
             )
 
-    def forward(self, states, actions, training=True):
+    def predict_future_state(self, current_state, action):
+        """LeCun's approach: predict next state given current state and action"""
+        return self.predictor(current_state, action)
+
+    def compute_target(self, states):
+        """Get target representations using momentum encoder"""
+        targets = []
+        with torch.no_grad():  # Stop gradient for targets (LeCun's approach)
+            for t in range(states.shape[1]):
+                target = self.target_encoder(states[:, t])
+                targets.append(target)
+        return torch.stack(targets, dim=1)
+
+    def forward(self, states, actions):
         """
-        LeCun's JEPA forward pass
+        LeCun's JEPA forward pass: predict future states in latent space
         Args:
-            states: [B, T, 2, 65, 65]
-            actions: [B, T-1, 2]
+            states: [B, T, 2, 65, 65] - Sequence of states
+            actions: [B, T-1, 2] - Sequence of actions
         Returns:
-            training=True: (predictions, targets)
-            training=False: predictions
+            predictions: [B, T, D] - Predicted state representations
         """
-        if training:
-            # Get target representations for all future states
-            with torch.no_grad():
-                target_embeddings = [
-                    self.target_encoder(states[:, t]) for t in range(1, states.shape[1])
-                ]
-                targets = torch.stack(target_embeddings, dim=1)
+        # Initial state encoding
+        z_t = self.encoder(states[:, 0])
+        predictions = [z_t]
 
-            # Get initial state embedding and predict future states
-            z_t = self.encoder(states[:, 0])
-            predictions = []
-            for t in range(actions.shape[1]):
-                z_t = self.predictor(z_t, actions[:, t])
-                predictions.append(z_t)
-            predictions = torch.stack(predictions, dim=1)
+        # Predict future states autoregressively (LeCun's approach)
+        for t in range(actions.shape[1]):
+            z_t = self.predict_future_state(z_t, actions[:, t])
+            predictions.append(z_t)
 
-            return predictions, targets
-        else:
-            # Evaluation mode - only predict from initial state
-            z_t = self.encoder(states[:, 0])
-            predictions = []
-            for t in range(actions.shape[1]):
-                z_t = self.predictor(z_t, actions[:, t])
-                predictions.append(z_t)
-            return torch.stack(predictions, dim=1)
+        return torch.stack(predictions, dim=1)
