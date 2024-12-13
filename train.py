@@ -56,8 +56,8 @@ def train_jepa(
     device,
     epochs=100,
     log_interval=10,
-    patience=4,  # Number of epochs to wait for improvement
-    min_delta=1e-4,  # Minimum change to qualify as an improvement
+    patience=4,
+    min_delta=1e-4,
 ):
     model.train()
 
@@ -65,8 +65,10 @@ def train_jepa(
     patience_counter = 0
     best_model_state = None
 
-    # Initialize with optimizer
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, ...)
+    # Properly configure the scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
+    )
 
     for epoch in range(epochs):
         total_loss = 0
@@ -114,7 +116,7 @@ def train_jepa(
             model.load_state_dict(best_model_state)
             break
 
-        # In training loop
+        # Update learning rate
         scheduler.step(avg_loss)
 
     return model, best_loss
