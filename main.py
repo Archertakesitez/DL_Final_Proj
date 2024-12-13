@@ -1,8 +1,7 @@
 from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
-from jepa_models import RecurrentJEPA
 import torch
-from models import MockModel
+from JEPA_model import JEPAModel
 import glob
 
 
@@ -42,23 +41,12 @@ def load_data(device):
     return probe_train_ds, probe_val_ds
 
 
-def load_model(device):
+def load_model():
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
-    embed_dim = 768
-    action_dim = 2  # As per your dataset
-
-    # Initialize the RecurrentJEPA model
-    model = RecurrentJEPA(embed_dim=embed_dim, action_dim=action_dim)
-
-    # Load the pretrained weights
-    checkpoint_path = "model_weights.pth"  # Changed filename
-    model.load_state_dict(torch.load(checkpoint_path))  # Simplified loading
-    model = model.to(device)
-
-    # Ensure model is in evaluation mode
-    model.eval()
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = JEPAModel(latent_dim=256, use_momentum=True).to(device)
+    model.load_state_dict(torch.load("model_weights.pth"))
     return model
 
 
@@ -79,8 +67,17 @@ def evaluate_model(device, model, probe_train_ds, probe_val_ds):
         print(f"{probe_attr} loss: {loss}")
 
 
+def location_losses(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    print("Pred shape:", pred.shape)
+    print("Target shape:", target.shape)
+    assert pred.shape == target.shape
+    mse = (pred - target).pow(2).mean(dim=0)
+    return mse
+
+
 if __name__ == "__main__":
     device = get_device()
     probe_train_ds, probe_val_ds = load_data(device)
-    model = load_model(device)
+    model = load_model()
+    model = model.to(device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)

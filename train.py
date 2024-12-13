@@ -1,153 +1,155 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from dataset import create_wall_dataloader
+from JEPA_model import JEPAModel
 import numpy as np
-from dataset import WallDataset, create_wall_dataloader
-from jepa_models import RecurrentJEPA
 from tqdm import tqdm
 
 
-def get_device():
-    """Check for GPU availability."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
-    return device
-
-
-def load_data(device):
-    data_path = "/scratch/DL24FA"
-
-    train_ds = create_wall_dataloader(
-        data_path=f"{data_path}/train",
-        probing=False,
-        device=device,
-        train=True,
-    )
-
-    return train_ds
-
-
-def compute_vicreg_loss(
-    predictions, targets, sim_weight=25.0, var_weight=25.0, cov_weight=1.0
-):
-    # Reshape from [batch_size, seq_len, embed_dim] to [batch_size * seq_len, embed_dim]
-    predictions = predictions.reshape(-1, predictions.shape[-1])
-    targets = targets.reshape(-1, targets.shape[-1])
-
-    # Invariance loss (similar to MSE)
-    sim_loss = nn.MSELoss()(predictions, targets)
-
-    # Variance loss
-    std_p = torch.sqrt(predictions.var(dim=0) + 1e-04)
-    std_loss = torch.mean(torch.relu(1 - std_p))
-
-    # Covariance loss
-    predictions = predictions - predictions.mean(dim=0)
-    cov_p = (predictions.T @ predictions) / (predictions.shape[0] - 1)
-    cov_loss = off_diagonal(cov_p).pow_(2).sum() / predictions.shape[1]
-
-    # Combine losses
-    loss = sim_weight * sim_loss + var_weight * std_loss + cov_weight * cov_loss
-
-    return loss
-
-
 def off_diagonal(x):
-    """Return off-diagonal elements of a square matrix."""
-    n = x.shape[0]
+    """Return off-diagonal elements of a square matrix"""
+    n, m = x.shape
+    assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def train_model(
+def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
+    """VicReg loss computation per timestep"""
+    B, T, D = z1.shape
+
+    total_loss = 0
+    for t in range(T):
+        # Take each timestep: [B, D]
+        z1_t = z1[:, t]
+        z2_t = z2[:, t]
+
+        # Invariance loss
+        sim_loss = F.mse_loss(z1_t, z2_t)
+
+        # Variance loss
+        std_z1 = torch.sqrt(z1_t.var(dim=0) + 1e-04)
+        std_z2 = torch.sqrt(z2_t.var(dim=0) + 1e-04)
+        std_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
+
+        # Covariance loss
+        z1_t = z1_t - z1_t.mean(dim=0)
+        z2_t = z2_t - z2_t.mean(dim=0)
+        cov_z1 = (z1_t.T @ z1_t) / (z1_t.shape[0] - 1)
+        cov_z2 = (z2_t.T @ z2_t) / (z2_t.shape[0] - 1)
+        cov_loss = (
+            off_diagonal(cov_z1).pow_(2).sum() / D
+            + off_diagonal(cov_z2).pow_(2).sum() / D
+        )
+
+        loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
+        total_loss += loss
+
+    return total_loss / T  # Average over timesteps
+
+
+def train_jepa(
     model,
-    dataloader,
+    train_loader,
     optimizer,
-    epochs,
     device,
-    patience=5,
-    save_path="model_weights.pth",
+    epochs=100,
+    log_interval=10,
+    patience=4,  # Number of epochs to wait for improvement
+    min_delta=1e-4,  # Minimum change to qualify as an improvement
 ):
-    model = model.to(device)
+    model.train()
+
     best_loss = float("inf")
     patience_counter = 0
-    best_epoch = 0
+    best_model_state = None
 
-    for e in range(epochs):
-        model.train()
-        epoch_loss = 0.0
-        pbar = tqdm(enumerate(dataloader), desc=f"Epoch {e+1}/{epochs}")
+    # Initialize with optimizer
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, ...)
 
-        for i, batch in pbar:
-            states, locations, actions = batch
-            states, locations, actions = (
-                states.to(device),
-                locations.to(device),
-                actions.to(device),
-            )
+    for epoch in range(epochs):
+        total_loss = 0
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
 
-            # Forward pass
-            predictions, targets = model(states, actions)
-            loss = compute_vicreg_loss(predictions, targets)
-            epoch_loss += loss.item()
+        for batch_idx, batch in enumerate(progress_bar):
+            states = batch.states.to(device)
+            actions = batch.actions.to(device)
 
-            # Backpropagation
             optimizer.zero_grad()
+
+            predictions = model(states, actions)
+            targets = model.compute_target(states)
+            loss = vicreg_loss(predictions, targets)
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+            model.momentum_update()
 
-            # Update target encoder with momentum
-            model._momentum_update_target_encoder()
+            total_loss += loss.item()
+            if batch_idx % log_interval == 0:
+                progress_bar.set_postfix(
+                    {
+                        "Loss": f"{loss.item():.4f}",
+                        "Avg Loss": f"{total_loss/(batch_idx+1):.4f}",
+                    }
+                )
 
-            pbar.set_postfix({"Loss": loss.item()})
+        avg_loss = total_loss / len(train_loader)
+        print(f"Epoch {epoch+1}, Average Loss: {avg_loss:.4f}")
 
-        avg_loss = epoch_loss / len(dataloader)
-        print(f"Epoch {e + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
-
-        if avg_loss < best_loss - 1e-5:
+        # Early stopping check
+        if avg_loss < best_loss - min_delta:
             best_loss = avg_loss
-            best_epoch = e
             patience_counter = 0
-            torch.save(model.state_dict(), save_path)
-            print(f"New best loss: {best_loss:.4f}. Model weights saved to {save_path}")
+            best_model_state = model.state_dict().copy()
+            torch.save(best_model_state, "model_weights.pth")
+            print(f"New best model saved with loss: {avg_loss:.4f}")
         else:
             patience_counter += 1
-            print(
-                f"No improvement for {patience_counter} epochs. Best loss: {best_loss:.4f}"
-            )
 
-            if patience_counter >= patience:
-                print(
-                    f"Early stopping triggered after epoch {e+1}. Best epoch was {best_epoch+1}"
-                )
-                break
+        if patience_counter >= patience:
+            print(f"Early stopping triggered after {epoch + 1} epochs")
+            model.load_state_dict(best_model_state)
+            break
+
+        # In training loop
+        scheduler.step(avg_loss)
+
+    return model, best_loss
 
 
 def main():
-    save_path = "model_weights.pth"
     # Hyperparameters
-    lr = 1e-4
-    weight_decay = 1e-5
-    epochs = 20
-    embed_dim = 768
-    momentum = 0.99
-    patience = 5
+    BATCH_SIZE = 32
+    LEARNING_RATE = 3e-5
+    EPOCHS = 100
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Define data, model, and optimizer
-    device = get_device()
-    model = RecurrentJEPA(embed_dim=embed_dim, momentum=momentum)
-    train_dataloader = load_data(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-
-    # Train the model
-    train_model(
-        model,
-        train_dataloader,
-        optimizer,
-        epochs,
-        device,
-        patience=patience,
-        save_path=save_path,
+    # Create data loader
+    train_loader = create_wall_dataloader(
+        data_path="/scratch/DL24FA/train", batch_size=BATCH_SIZE, train=True
     )
+
+    # Initialize model
+    model = JEPAModel(latent_dim=256, use_momentum=True).to(DEVICE)
+
+    # Initialize optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    # Train with early stopping
+    model, best_loss = train_jepa(
+        model=model,
+        train_loader=train_loader,
+        optimizer=optimizer,
+        device=DEVICE,
+        epochs=EPOCHS,
+        patience=4,  # Stop if no improvement for 4 epochs
+        min_delta=1e-4,  # Minimum improvement threshold
+    )
+
+    print(f"Training finished with best loss: {best_loss:.4f}")
 
 
 if __name__ == "__main__":
