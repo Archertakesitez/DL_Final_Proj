@@ -125,7 +125,7 @@ class JEPAModel(nn.Module):
         Returns:
             predictions: Predicted latent states [B, T, D]  # T total predictions
         """
-        print("Shape of states before augmentation:", states.shape)
+        # print("Shape of states before augmentation:", states.shape)
         B = states.shape[0]
         T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
 
