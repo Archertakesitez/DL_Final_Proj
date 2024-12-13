@@ -133,7 +133,7 @@ def main():
     )
 
     # Initialize model
-    model = JEPAModel(latent_dim=256, use_momentum=True).to(DEVICE)
+    model = JEPAModel(latent_dim=256, momentum=0.99).to(DEVICE)
 
     # Initialize optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
