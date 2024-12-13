@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
 import numpy as np
 from dataset import WallDataset, create_wall_dataloader
 from jepa_models import RecurrentJEPA
@@ -196,9 +197,10 @@ def main():
     model = RecurrentJEPA(embed_dim=embed_dim, proj_dim=proj_dim)
     train_dataloader = load_data(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
 
     # Train the model
-    train_model(model, train_dataloader, optimizer, epochs, device, patience=patience, save_path=save_path)
+    train_model(model, train_dataloader, scheduler, epochs, device, patience=patience, save_path=save_path)
 
 
 if __name__ == "__main__":
