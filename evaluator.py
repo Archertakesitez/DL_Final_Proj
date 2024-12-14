@@ -273,9 +273,27 @@ class ProbingEvaluator:
 
             # Make predictions using prober
             pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+            # Unnormalize predictions if they were normalized
+            pred_locs = self.normalizer.unnormalize_location(pred_locs)
+            target = self.normalizer.unnormalize_location(
+                target
+            )  # Unnormalize target too
+
+            # Debug prints
+            print("Pred locs shape:", pred_locs.shape)
+            print("Target shape:", target.shape)
+            print("Pred range:", pred_locs.min().item(), pred_locs.max().item())
+            print("Target range:", target.min().item(), target.max().item())
 
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
+
+            # Before visualization
+            print(f"\nBatch {idx} statistics:")
+            print(f"Predicted locations shape: {pred_locs.shape}")
+            print(f"Target locations shape: {target.shape}")
+            print(f"Prediction range: ({pred_locs.min():.3f}, {pred_locs.max():.3f})")
+            print(f"Target range: ({target.min():.3f}, {target.max():.3f})")
 
             # Visualize every N batches
             if idx % 10 == 0:
@@ -283,7 +301,7 @@ class ProbingEvaluator:
                 self.visualize_trajectories(
                     pred_locs=pred_locs,
                     target_locs=target,
-                    walls=batch.states[:, 0, 1],  # Wall layout from first timestep
+                    walls=batch.states[:, 0, 1],
                     save_path=f"trajectory_plots/trajectory_pred_{prefix}_{idx}.png",
                 )
 
@@ -304,67 +322,101 @@ class ProbingEvaluator:
     ):
         """
         Save trajectory visualization plots to a directory for later downloading from HPC
-        Args:
-            pred_locs: [B, T, 2] - predicted coordinates
-            target_locs: [B, T, 2] - ground truth coordinates
-            walls: [B, H, W] - optional wall layout
-            batch_idx: which batch item to visualize
-            save_path: path to save the plot
         """
-        pred_path = pred_locs[batch_idx].cpu().numpy()
-        true_path = target_locs[batch_idx].cpu().numpy()
+        # Get multiple trajectories
+        num_trajectories = min(4, pred_locs.shape[0])  # Plot up to 4 trajectories
 
-        plt.figure(figsize=(10, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(20, 20))
+        axes = axes.flatten()
 
-        # Plot walls if provided
-        if walls is not None:
-            wall_layout = walls[batch_idx].cpu().numpy()
-            plt.imshow(wall_layout, cmap="gray", alpha=0.3)
+        for i in range(num_trajectories):
+            pred_path = pred_locs[i].cpu().numpy()
+            true_path = target_locs[i].cpu().numpy()
 
-        # Plot trajectories
-        plt.plot(pred_path[:, 0], pred_path[:, 1], "r-", label="Predicted", linewidth=2)
-        plt.plot(
-            true_path[:, 0], true_path[:, 1], "b-", label="Ground Truth", linewidth=2
-        )
+            # Debug prints for each trajectory
+            print(f"\nTrajectory {i}:")
+            print(f"Predicted path shape: {pred_path.shape}")
+            print(f"True path shape: {true_path.shape}")
+            print(
+                f"Predicted coordinates min/max: ({pred_path.min():.3f}, {pred_path.max():.3f})"
+            )
+            print(
+                f"True coordinates min/max: ({true_path.min():.3f}, {true_path.max():.3f})"
+            )
+            print(f"Predicted path points:\n{pred_path}")
+            print(f"True path points:\n{true_path}")
 
-        # Plot start and end points
-        plt.scatter(
-            pred_path[0, 0],
-            pred_path[0, 1],
-            c="red",
-            marker="o",
-            s=100,
-            label="Start (Pred)",
-        )
-        plt.scatter(
-            pred_path[-1, 0],
-            pred_path[-1, 1],
-            c="red",
-            marker="x",
-            s=100,
-            label="End (Pred)",
-        )
-        plt.scatter(
-            true_path[0, 0],
-            true_path[0, 1],
-            c="blue",
-            marker="o",
-            s=100,
-            label="Start (True)",
-        )
-        plt.scatter(
-            true_path[-1, 0],
-            true_path[-1, 1],
-            c="blue",
-            marker="x",
-            s=100,
-            label="End (True)",
-        )
+            ax = axes[i]
 
-        plt.legend()
-        plt.title("Predicted vs Ground Truth Trajectory")
-        plt.xlabel("X coordinate")
-        plt.ylabel("Y coordinate")
-        plt.grid(True)
+            # Plot walls if provided
+            if walls is not None:
+                wall_layout = walls[i].cpu().numpy()
+                ax.imshow(wall_layout, cmap="gray", alpha=0.3)
+
+            # Plot trajectories with markers
+            ax.plot(
+                pred_path[:, 0],
+                pred_path[:, 1],
+                "r.-",
+                label="Predicted",
+                linewidth=2,
+                markersize=5,
+            )
+            ax.plot(
+                true_path[:, 0],
+                true_path[:, 1],
+                "b.-",
+                label="Ground Truth",
+                linewidth=2,
+                markersize=5,
+            )
+
+            # Plot start and end points
+            ax.scatter(
+                pred_path[0, 0],
+                pred_path[0, 1],
+                c="red",
+                marker="o",
+                s=100,
+                label="Start (Pred)",
+            )
+            ax.scatter(
+                pred_path[-1, 0],
+                pred_path[-1, 1],
+                c="red",
+                marker="x",
+                s=100,
+                label="End (Pred)",
+            )
+            ax.scatter(
+                true_path[0, 0],
+                true_path[0, 1],
+                c="blue",
+                marker="o",
+                s=100,
+                label="Start (True)",
+            )
+            ax.scatter(
+                true_path[-1, 0],
+                true_path[-1, 1],
+                c="blue",
+                marker="x",
+                s=100,
+                label="End (True)",
+            )
+
+            ax.legend()
+            ax.set_title(f"Trajectory {i}")
+            ax.set_xlabel("X coordinate")
+            ax.set_ylabel("Y coordinate")
+            ax.grid(True)
+
+            # Set axis limits with some padding
+            all_x = np.concatenate([pred_path[:, 0], true_path[:, 0]])
+            all_y = np.concatenate([pred_path[:, 1], true_path[:, 1]])
+            ax.set_xlim([all_x.min() - 1, all_x.max() + 1])
+            ax.set_ylim([all_y.min() - 1, all_y.max() + 1])
+
+        plt.tight_layout()
         plt.savefig(save_path)
         plt.close()
