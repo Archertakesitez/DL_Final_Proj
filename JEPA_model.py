@@ -142,22 +142,32 @@ class JEPAModel(nn.Module):
                 targets.append(target)
         return torch.stack(targets, dim=1)
 
-    def forward(self, states, actions):
+    def forward(self, states, actions, teacher_forcing_ratio=0.5):
         """
-        LeCun's JEPA forward pass: predict future states in latent space
+        Forward pass with teacher forcing
         Args:
             states: [B, T, 2, 65, 65] - Sequence of states
             actions: [B, T-1, 2] - Sequence of actions
-        Returns:
-            predictions: [B, T, D] - Predicted state representations
+            teacher_forcing_ratio: probability of using teacher forcing
         """
         # Initial state encoding
         z_t = self.encoder(states[:, 0])
         predictions = [z_t]
 
-        # Predict future states autoregressively (LeCun's approach)
+        # Get all target encodings at once
+        with torch.no_grad():
+            targets = self.compute_target(states)
+
+        # Predict future states with teacher forcing
         for t in range(actions.shape[1]):
-            z_t = self.predict_future_state(z_t, actions[:, t])
+            # Randomly decide whether to use ground truth or prediction
+            if torch.rand(1).item() < teacher_forcing_ratio:
+                # Teacher forcing: use target encoding
+                z_t = self.predict_future_state(targets[:, t], actions[:, t])
+            else:
+                # Recurrent: use previous prediction
+                z_t = self.predict_future_state(z_t, actions[:, t])
             predictions.append(z_t)
 
-        return torch.stack(predictions, dim=1)
+        predictions = torch.stack(predictions, dim=1)
+        return predictions, targets
