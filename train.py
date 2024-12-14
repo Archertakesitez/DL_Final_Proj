@@ -15,9 +15,9 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=100.0, std_coef=10.0, cov_coef=1.0, target_std=0.3):
+def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
     """
-    VicReg loss with stronger variance stabilization
+    Original VICReg loss implementation
     """
     B, T, D = z1.shape
 
@@ -29,14 +29,10 @@ def vicreg_loss(z1, z2, sim_coef=100.0, std_coef=10.0, cov_coef=1.0, target_std=
         # Invariance loss
         sim_loss = F.mse_loss(z1_t, z2_t)
 
-        # Stronger variance stabilization
+        # Standard variance loss (original VICReg)
         std_z1 = torch.sqrt(z1_t.var(dim=0) + 1e-04)
         std_z2 = torch.sqrt(z2_t.var(dim=0) + 1e-04)
-
-        # Quadratic penalty for deviating from target_std
-        std_loss = ((std_z1 - target_std).pow(2)).mean() + (
-            (std_z2 - target_std).pow(2)
-        ).mean()
+        std_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
 
         # Covariance loss
         z1_t = z1_t - z1_t.mean(dim=0)
@@ -115,6 +111,7 @@ def train_jepa(
 
             optimizer.zero_grad()
             # Only pass initial states and full action sequence
+
             init_states = states[:, 0:1]  # Take only first timestep [B, 1, C, H, W]
             predictions, targets = model(states=init_states, actions=actions)
             loss = vicreg_loss(predictions, targets)
