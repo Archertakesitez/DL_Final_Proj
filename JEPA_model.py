@@ -152,7 +152,7 @@ class JEPAModel(nn.Module):
         """
         # Initial state encoding
         z_t = self.encoder(states[:, 0])
-        predictions = []  # Don't include initial state
+        predictions = [z_t]
 
         # Get all target encodings at once
         with torch.no_grad():
@@ -160,10 +160,12 @@ class JEPAModel(nn.Module):
 
         # Predict future states with teacher forcing
         for t in range(actions.shape[1]):
+            # Randomly decide whether to use ground truth or prediction
             if torch.rand(1).item() < teacher_forcing_ratio:
-                target_idx = min(t, targets.shape[1] - 1)
-                z_t = self.predict_future_state(targets[:, target_idx], actions[:, t])
+                # Teacher forcing: use target encoding
+                z_t = self.predict_future_state(targets[:, t], actions[:, t])
             else:
+                # Recurrent: use previous prediction
                 z_t = self.predict_future_state(z_t, actions[:, t])
             predictions.append(z_t)
 
