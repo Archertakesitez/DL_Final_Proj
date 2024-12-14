@@ -68,20 +68,18 @@ def train_jepa(
         optimizer, mode="min", factor=0.5, patience=2, verbose=True
     )
 
+    STD_COLLAPSE_THRESHOLD = 0.05
+
     for epoch in range(epochs):
         total_loss = 0
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}", leave=True)
 
         for batch_idx, batch in enumerate(progress_bar):
-            states = batch.states.to(device)  # [B, T, C, H, W]
-            actions = batch.actions.to(device)  # [B, T-1, 2]
+            states = batch.states.to(device)
+            actions = batch.actions.to(device)
 
             optimizer.zero_grad()
-
-            # Get predictions and targets in one forward pass
             predictions, targets = model(states, actions)
-
-            # Compute VICReg loss
             loss = vicreg_loss(predictions, targets)
 
             loss.backward()
@@ -91,26 +89,40 @@ def train_jepa(
 
             total_loss += loss.item()
 
-            # Update progress bar with metrics
+            # Update progress bar
+            progress_bar.set_postfix(
+                {
+                    "Loss": f"{loss.item():.4f}",
+                    "Avg Loss": f"{total_loss/(batch_idx+1):.4f}",
+                }
+            )
+
+            # Collapse monitoring (in a separate line)
             if batch_idx % log_interval == 0:
                 with torch.no_grad():
+                    pred_mean = predictions.mean().item()
                     pred_std = predictions.std().item()
+                    target_mean = targets.mean().item()
                     target_std = targets.std().item()
-                    progress_bar.set_postfix(
-                        {
-                            "Loss": f"{loss.item():.4f}",
-                            "Avg Loss": f"{total_loss/(batch_idx+1):.4f}",
-                            "Pred std": f"{pred_std:.4f}",
-                            "Target std": f"{target_std:.4f}",
-                        }
-                    )
 
-        # Compute average loss for the epoch
+                    # Use tqdm.write to print without breaking the progress bar
+                    tqdm.write("\nCollapse Monitoring:")
+                    tqdm.write(f"Batch {batch_idx}")
+                    tqdm.write(f"Pred   μ/σ: {pred_mean:.4f}/{pred_std:.4f}")
+                    tqdm.write(f"Target μ/σ: {target_mean:.4f}/{target_std:.4f}")
+                    if pred_std < STD_COLLAPSE_THRESHOLD:
+                        tqdm.write("⚠️  WARNING: Possible collapse detected!")
+                    tqdm.write("")  # Empty line for spacing
+
+        # End of epoch summary
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1}, Average Loss: {avg_loss:.4f}")
-
-        # Learning rate scheduling
-        scheduler.step(avg_loss)
+        tqdm.write(f"\nEpoch {epoch+1} Summary:")
+        tqdm.write(f"Average Loss: {avg_loss:.4f}")
+        tqdm.write(f"Final Pred   μ/σ: {pred_mean:.4f}/{pred_std:.4f}")
+        tqdm.write(f"Final Target μ/σ: {target_mean:.4f}/{target_std:.4f}")
+        if pred_std < STD_COLLAPSE_THRESHOLD:
+            tqdm.write("⚠️  WARNING: Epoch ended with possible collapse!")
+        tqdm.write("-" * 50)
 
         # Early stopping check
         if avg_loss < best_loss - min_delta:
@@ -118,14 +130,16 @@ def train_jepa(
             patience_counter = 0
             best_model_state = model.state_dict().copy()
             torch.save(best_model_state, "model_weights.pth")
-            print(f"New best model saved with loss: {avg_loss:.4f}")
+            tqdm.write(f"New best model saved with loss: {avg_loss:.4f}")
         else:
             patience_counter += 1
 
         if patience_counter >= patience:
-            print(f"Early stopping triggered after {epoch + 1} epochs")
+            tqdm.write(f"Early stopping triggered after {epoch + 1} epochs")
             model.load_state_dict(best_model_state)
             break
+
+        scheduler.step(avg_loss)
 
     return model, best_loss
 
