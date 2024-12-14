@@ -152,7 +152,7 @@ class JEPAModel(nn.Module):
         """
         # Initial state encoding
         z_t = self.encoder(states[:, 0])
-        predictions = [z_t]
+        predictions = []  # Don't include initial state
 
         # Get all target encodings at once
         with torch.no_grad():
