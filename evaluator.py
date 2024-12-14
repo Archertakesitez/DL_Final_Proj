@@ -233,7 +233,6 @@ class ProbingEvaluator:
     ):
         quick_debug = self.quick_debug
         config = self.config
-
         model = self.model
         probing_losses = []
         prober.eval()
@@ -241,18 +240,40 @@ class ProbingEvaluator:
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
             # TODO: Forward pass through your model
-            init_states = batch.states[:, 0:1]  # BS, 1 C, H, W
-            pred_encs, _ = model(states=init_states, actions=batch.actions)
-            # # BS, T, D --> T, BS, D
-            pred_encs = pred_encs.transpose(0, 1)
+            init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
 
-            # Make sure pred_encs has shape (T, BS, D) at this point
+            # Need to get predictions for all timesteps
+            all_predictions = []
+            current_state = init_states
+
+            # First prediction (t=0)
+            pred_enc, _ = model(states=current_state, actions=batch.actions[:, 0:1])
+            all_predictions.append(pred_enc)
+
+            # Predict remaining steps
+            for t in range(batch.actions.shape[1] - 1):
+                current_state = batch.states[:, t + 1 : t + 2]
+                pred_enc, _ = model(
+                    states=current_state, actions=batch.actions[:, t + 1 : t + 2]
+                )
+                all_predictions.append(pred_enc)
+
+            # Add the final state prediction
+            final_state = batch.states[:, -1:]
+            pred_enc, _ = model(states=final_state, actions=batch.actions[:, -1:])
+            all_predictions.append(pred_enc)
+
+            # Combine all predictions
+            pred_encs = torch.cat(all_predictions, dim=1)  # Should give [64, 17, 256]
+            pred_encs = pred_encs.transpose(0, 1)  # [17, 64, 256]
             ################################################################################
 
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
 
+            # Make sure we stack predictions in the same way as in train_pred_prober
             pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
 
