@@ -15,38 +15,30 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=5.0, cov_coef=4.0, target_std=0.4):
+def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=15.0, cov_coef=4.0, target_std=0.3):
     """
-    VicReg loss with variance stabilization around target_std
-    Args:
-        z1, z2: Tensors of shape [B, T, D]
-        target_std: Target standard deviation to stabilize around
+    VicReg loss with stronger variance stabilization
     """
     B, T, D = z1.shape
 
     total_loss = 0
-    for t in range(1, T):  # Start from t=1 as discussed
+    for t in range(1, T):
         z1_t = z1[:, t]
         z2_t = z2[:, t]
 
-        # 1. Invariance loss (unchanged)
+        # Invariance loss
         sim_loss = F.mse_loss(z1_t, z2_t)
 
-        # 2. Modified variance loss with stabilization
+        # Stronger variance stabilization
         std_z1 = torch.sqrt(z1_t.var(dim=0) + 1e-04)
         std_z2 = torch.sqrt(z2_t.var(dim=0) + 1e-04)
 
-        # Prevent collapse (std too low)
-        collapse_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
+        # Quadratic penalty for deviating from target_std
+        std_loss = ((std_z1 - target_std).pow(2)).mean() + (
+            (std_z2 - target_std).pow(2)
+        ).mean()
 
-        # Prevent explosion (std too high) and stabilize around target_std
-        stabilization_loss = torch.mean(F.relu(std_z1 - target_std)) + torch.mean(
-            F.relu(std_z2 - target_std)
-        )
-
-        std_loss = collapse_loss + stabilization_loss
-
-        # 3. Covariance loss (unchanged)
+        # Covariance loss
         z1_t = z1_t - z1_t.mean(dim=0)
         z2_t = z2_t - z2_t.mean(dim=0)
         cov_z1 = (z1_t.T @ z1_t) / (B - 1)
@@ -56,7 +48,6 @@ def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=5.0, cov_coef=4.0, target_std=0.
             + off_diagonal(cov_z2).pow_(2).sum() / D
         )
 
-        # Combine losses
         loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
         total_loss += loss
 
@@ -161,7 +152,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 32
-    LEARNING_RATE = 3e-5
+    LEARNING_RATE = 1e-6
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -174,7 +165,9 @@ def main():
     model = JEPAModel(latent_dim=256, use_momentum=True).to(DEVICE)
 
     # Initialize optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4
+    )
 
     # Train with early stopping
     model, best_loss = train_jepa(
