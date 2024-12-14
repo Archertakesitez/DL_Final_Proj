@@ -60,64 +60,34 @@ def train_jepa(
     min_delta=1e-4,  # Minimum change to qualify as an improvement
 ):
     model.train()
-
-    best_loss = float("inf")
-    patience_counter = 0
-    best_model_state = None
-
-    # Initialize with optimizer
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, ...)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=2, verbose=True
+    )
 
     for epoch in range(epochs):
-        total_loss = 0
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
-
-        for batch_idx, batch in enumerate(progress_bar):
-            states = batch.states.to(device)
-            actions = batch.actions.to(device)
+        for batch_idx, batch in enumerate(train_loader):
+            states = batch.states.to(device)  # [B, T, C, H, W]
+            actions = batch.actions.to(device)  # [B, T-1, 2]
 
             optimizer.zero_grad()
 
-            predictions = model(states, actions)
-            targets = model.compute_target(states)
+            # Get predictions and targets in one forward pass
+            predictions, targets = model(states, actions)
+
+            # Compute VICReg loss
             loss = vicreg_loss(predictions, targets)
+
+            # Monitor for collapse
+            if batch_idx % log_interval == 0:
+                with torch.no_grad():
+                    pred_std = predictions.std().item()
+                    target_std = targets.std().item()
+                    print(f"Pred std: {pred_std:.4f}, Target std: {target_std:.4f}")
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             model.momentum_update()
-
-            total_loss += loss.item()
-            if batch_idx % log_interval == 0:
-                progress_bar.set_postfix(
-                    {
-                        "Loss": f"{loss.item():.4f}",
-                        "Avg Loss": f"{total_loss/(batch_idx+1):.4f}",
-                    }
-                )
-
-        avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1}, Average Loss: {avg_loss:.4f}")
-
-        # Early stopping check
-        if avg_loss < best_loss - min_delta:
-            best_loss = avg_loss
-            patience_counter = 0
-            best_model_state = model.state_dict().copy()
-            torch.save(best_model_state, "model_weights.pth")
-            print(f"New best model saved with loss: {avg_loss:.4f}")
-        else:
-            patience_counter += 1
-
-        if patience_counter >= patience:
-            print(f"Early stopping triggered after {epoch + 1} epochs")
-            model.load_state_dict(best_model_state)
-            break
-
-        # In training loop
-        scheduler.step(avg_loss)
-
-    return model, best_loss
 
 
 def main():

@@ -95,36 +95,30 @@ class JEPAModel(nn.Module):
         """
         Forward pass implementing recurrent JEPA prediction.
         Args:
-            states: Observations [B, 1, C, H, W]  # Only initial state
-            actions: Action sequence [B, T-1, 2]  # T-1 actions
+            states: Observations [B, T, C, H, W]  # Full sequence
+            actions: Action sequence [B, T-1, 2]
         Returns:
-            predictions: Predicted latent states [B, T, D]  # T total predictions
+            predictions: Predicted latent states [B, T, D]
+            targets: Target latent states [B, T, D]
         """
-        B = states.shape[0]
-        T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
-
-        # Initial encoding
-        curr_state = self.encoder(states[:, 0])  # [B, D]
-        predictions = [curr_state]
-
-        # Predict future states
-        for t in range(T - 1):
-            curr_action = actions[:, t]  # [B, 2]
-            curr_state = self.predictor(curr_state, curr_action)
-            predictions.append(curr_state)
-
-        predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-        return predictions
-
-    def compute_target(self, states):
-        """Compute target representations for all states"""
         B, T = states.shape[:2]
-        target_encoder = self.target_encoder if self.use_momentum else self.encoder
 
+        # Initial encoding (Enc_θ)
+        s0 = self.encoder(states[:, 0])  # [B, D]
+
+        # Predict future states (Pred_φ)
+        predictions = [s0]
+        for t in range(T - 1):
+            pred_t = self.predictor(predictions[-1], actions[:, t])
+            predictions.append(pred_t)
+        predictions = torch.stack(predictions, dim=1)  # [B, T, D]
+
+        # Generate target representations (Enc_ψ)
         targets = []
-        for t in range(T):
-            with torch.no_grad():
-                target = target_encoder(states[:, t])
-                targets.append(target)
+        with torch.no_grad():
+            for t in range(T):
+                target_t = self.target_encoder(states[:, t])
+                targets.append(target_t)
+        targets = torch.stack(targets, dim=1)  # [B, T, D]
 
-        return torch.stack(targets, dim=1)  # [B, T, D]
+        return predictions, targets
