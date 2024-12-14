@@ -15,7 +15,7 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
+def vicreg_loss(z1, z2, sim_coef=50.0, std_coef=10.0, cov_coef=2.0):
     """VicReg loss computation per timestep"""
     B, T, D = z1.shape
 
@@ -65,7 +65,7 @@ def train_jepa(
     best_model_state = None
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, verbose=True
+        optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
     )
 
     STD_COLLAPSE_THRESHOLD = 0.05
