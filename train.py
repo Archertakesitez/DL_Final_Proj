@@ -101,7 +101,7 @@ def train_jepa(
 
             predictions, targets = model(states, actions)
             # targets = model.compute_target(states)
-            loss = byol_loss(predictions, targets)
+            loss = vicreg_loss(predictions, targets)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
