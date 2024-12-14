@@ -119,13 +119,6 @@ class ProbingEvaluator:
                     0
                 ]  # Get only predictions
                 pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
-
-                # Debug prints for shape analysis
-                print("target shape:", target.shape)
-                print("indices shape:", indices.shape)
-                print("indices max value:", indices.max())
-                print("indices min value:", indices.min())
-                print("sampled_target_locs shape:", sampled_target_locs.shape)
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
@@ -144,6 +137,11 @@ class ProbingEvaluator:
                     config.sample_timesteps is not None
                     and config.sample_timesteps < n_steps
                 ):
+                    print("target shape:", target.shape)
+                    print("indices shape:", indices.shape)
+                    print("indices max value:", indices.max())
+                    print("indices min value:", indices.min())
+                    print("sampled_target_locs shape:", sampled_target_locs.shape)
                     sample_shape = (config.sample_timesteps,) + pred_encs.shape[1:]
                     # we only randomly sample n timesteps to train prober.
                     # we most likely do this to avoid OOM
