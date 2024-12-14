@@ -271,16 +271,100 @@ class ProbingEvaluator:
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
 
-            # Make sure we stack predictions in the same way as in train_pred_prober
+            # Make predictions using prober
             pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
 
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
 
+            # Visualize every N batches
+            if idx % 10 == 0:
+                os.makedirs("trajectory_plots", exist_ok=True)
+                self.visualize_trajectories(
+                    pred_locs=pred_locs,
+                    target_locs=target,
+                    walls=batch.states[:, 0, 1],  # Wall layout from first timestep
+                    save_path=f"trajectory_plots/trajectory_pred_{prefix}_{idx}.png",
+                )
+
         losses_t = torch.stack(probing_losses, dim=0).mean(dim=0)
         losses_t = self.normalizer.unnormalize_mse(losses_t)
-
         losses_t = losses_t.mean(dim=-1)
         average_eval_loss = losses_t.mean().item()
 
         return average_eval_loss
+
+    def visualize_trajectories(
+        self,
+        pred_locs,
+        target_locs,
+        walls=None,
+        batch_idx=0,
+        save_path="trajectory_pred.png",
+    ):
+        """
+        Save trajectory visualization plots to a directory for later downloading from HPC
+        Args:
+            pred_locs: [B, T, 2] - predicted coordinates
+            target_locs: [B, T, 2] - ground truth coordinates
+            walls: [B, H, W] - optional wall layout
+            batch_idx: which batch item to visualize
+            save_path: path to save the plot
+        """
+        pred_path = pred_locs[batch_idx].cpu().numpy()
+        true_path = target_locs[batch_idx].cpu().numpy()
+
+        plt.figure(figsize=(10, 10))
+
+        # Plot walls if provided
+        if walls is not None:
+            wall_layout = walls[batch_idx].cpu().numpy()
+            plt.imshow(wall_layout, cmap="gray", alpha=0.3)
+
+        # Plot trajectories
+        plt.plot(pred_path[:, 0], pred_path[:, 1], "r-", label="Predicted", linewidth=2)
+        plt.plot(
+            true_path[:, 0], true_path[:, 1], "b-", label="Ground Truth", linewidth=2
+        )
+
+        # Plot start and end points
+        plt.scatter(
+            pred_path[0, 0],
+            pred_path[0, 1],
+            c="red",
+            marker="o",
+            s=100,
+            label="Start (Pred)",
+        )
+        plt.scatter(
+            pred_path[-1, 0],
+            pred_path[-1, 1],
+            c="red",
+            marker="x",
+            s=100,
+            label="End (Pred)",
+        )
+        plt.scatter(
+            true_path[0, 0],
+            true_path[0, 1],
+            c="blue",
+            marker="o",
+            s=100,
+            label="Start (True)",
+        )
+        plt.scatter(
+            true_path[-1, 0],
+            true_path[-1, 1],
+            c="blue",
+            marker="x",
+            s=100,
+            label="End (True)",
+        )
+
+        plt.legend()
+        plt.title("Predicted vs Ground Truth Trajectory")
+        plt.xlabel("X coordinate")
+        plt.ylabel("Y coordinate")
+        plt.grid(True)
+        plt.savefig(save_path)
+        plt.close()
