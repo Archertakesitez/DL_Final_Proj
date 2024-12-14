@@ -65,19 +65,18 @@ def apply_trajectory_augmentations(states, actions, p=0.5):
     # Horizontal flip - need to flip both states AND actions
     if torch.rand(1) < p:
         states = torch.flip(states, dims=[-1])
-        actions[..., 0] = -actions[..., 0]  # Flip x-direction actions
+        actions[:, :, 0] = -actions[:, :, 0]  # Flip x-direction actions
 
-    # 90-degree rotations - need to transform actions accordingly
+    # 90-degree rotations
     if torch.rand(1) < p:
-        k = torch.randint(1, 4, (1,))  # 1-3 times 90 degrees
+        k = torch.randint(1, 4, (1,)).item()  # Convert tensor to integer with .item()
         states = torch.rot90(states, k=k, dims=[-2, -1])
 
         # Rotate actions by k*90 degrees
         for _ in range(k):
-            # (x,y) -> (-y,x) for 90-degree rotation
-            actions_x = actions[..., 0].clone()
-            actions[..., 0] = -actions[..., 1]
-            actions[..., 1] = actions_x
+            actions_x = actions[:, :, 0].clone()
+            actions[:, :, 0] = -actions[:, :, 1]  # x = -y
+            actions[:, :, 1] = actions_x  # y = x
 
     return states, actions
 
