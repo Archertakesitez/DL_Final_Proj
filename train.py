@@ -15,39 +15,52 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=50.0, std_coef=10.0, cov_coef=2.0):
-    """VicReg loss computation per timestep"""
+def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=5.0, cov_coef=4.0, target_std=0.4):
+    """
+    VicReg loss with variance stabilization around target_std
+    Args:
+        z1, z2: Tensors of shape [B, T, D]
+        target_std: Target standard deviation to stabilize around
+    """
     B, T, D = z1.shape
 
     total_loss = 0
-    # Start from t=1 since t=0 is just the initial encoding
-    for t in range(1, T):
-        # Take each timestep: [B, D]
+    for t in range(1, T):  # Start from t=1 as discussed
         z1_t = z1[:, t]
         z2_t = z2[:, t]
 
-        # Invariance loss
+        # 1. Invariance loss (unchanged)
         sim_loss = F.mse_loss(z1_t, z2_t)
 
-        # Variance loss
+        # 2. Modified variance loss with stabilization
         std_z1 = torch.sqrt(z1_t.var(dim=0) + 1e-04)
         std_z2 = torch.sqrt(z2_t.var(dim=0) + 1e-04)
-        std_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
 
-        # Covariance loss
+        # Prevent collapse (std too low)
+        collapse_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
+
+        # Prevent explosion (std too high) and stabilize around target_std
+        stabilization_loss = torch.mean(F.relu(std_z1 - target_std)) + torch.mean(
+            F.relu(std_z2 - target_std)
+        )
+
+        std_loss = collapse_loss + stabilization_loss
+
+        # 3. Covariance loss (unchanged)
         z1_t = z1_t - z1_t.mean(dim=0)
         z2_t = z2_t - z2_t.mean(dim=0)
-        cov_z1 = (z1_t.T @ z1_t) / (z1_t.shape[0] - 1)
-        cov_z2 = (z2_t.T @ z2_t) / (z2_t.shape[0] - 1)
+        cov_z1 = (z1_t.T @ z1_t) / (B - 1)
+        cov_z2 = (z2_t.T @ z2_t) / (B - 1)
         cov_loss = (
             off_diagonal(cov_z1).pow_(2).sum() / D
             + off_diagonal(cov_z2).pow_(2).sum() / D
         )
 
+        # Combine losses
         loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
         total_loss += loss
 
-    return total_loss / (T - 1)  # Average over timesteps (excluding t=0)
+    return total_loss / (T - 1)
 
 
 def train_jepa(
