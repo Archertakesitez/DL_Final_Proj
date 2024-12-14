@@ -55,7 +55,7 @@ def train_jepa(
     optimizer,
     device,
     epochs=100,
-    log_interval=10,
+    log_interval=100,
     patience=4,  # Number of epochs to wait for improvement
     min_delta=1e-4,  # Minimum change to qualify as an improvement
 ):
