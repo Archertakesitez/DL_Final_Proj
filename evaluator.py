@@ -118,24 +118,22 @@ class ProbingEvaluator:
                 # print("Evaluator - init_states shape:", init_states.shape)
                 # print("Evaluator - actions shape:", batch.actions.shape)
 
-                # Debug input shapes
-                print("\nInput shapes:")
-                print(
-                    f"batch.states shape: {batch.states.shape}"
-                )  # Should be [B, T, 2, 65, 65]
-                print(
-                    f"batch.actions shape: {batch.actions.shape}"
-                )  # Should be [B, T-1, 2]
-                print(
-                    f"init_states shape: {init_states.shape}"
-                )  # Should be [B, 1, 2, 65, 65]
+                # Need to get predictions for all timesteps
+                all_predictions = []
+                current_state = init_states
 
-                pred_encs, _ = model(states=init_states, actions=batch.actions)
-                print(f"pred_encs shape after model: {pred_encs.shape}")
+                # Predict step by step
+                for t in range(batch.actions.shape[1]):  # For each action
+                    pred_enc, _ = model(
+                        states=current_state, actions=batch.actions[:, t : t + 1]
+                    )
+                    all_predictions.append(pred_enc)
+                    current_state = batch.states[
+                        :, t + 1 : t + 2
+                    ]  # Use next state as new current state
+
+                pred_encs = torch.cat(all_predictions, dim=1)  # Combine all predictions
                 pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
-                print(f"pred_encs shape after transpose: {pred_encs.shape}")
-
-                # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
