@@ -208,7 +208,6 @@ class ProbingEvaluator:
         val_ds,
         prefix="",
     ):
-        quick_debug = self.quick_debug
         config = self.config
 
         model = self.model
@@ -218,9 +217,13 @@ class ProbingEvaluator:
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
             # TODO: Forward pass through your model
-            init_states = batch.states[:, 0:1]  # BS, 1 C, H, W
-            pred_encs = model(states=init_states, actions=batch.actions)
-            # # BS, T, D --> T, BS, D
+            init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
+
+            # Unpack the output from the model
+            pred_encs, _ = model(states=init_states, actions=batch.actions)
+            # Now pred_encs is a tensor of shape [B, T, D]
+
+            # Transpose to [T, B, D]
             pred_encs = pred_encs.transpose(0, 1)
 
             # Make sure pred_encs has shape (T, BS, D) at this point
