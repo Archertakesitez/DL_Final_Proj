@@ -65,8 +65,15 @@ def train_jepa(
     patience_counter = 0
     best_model_state = None
 
-    # Initialize with optimizer
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, ...)
+    # Initialize scheduler with proper parameters
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",  # Reduce LR when metric stops decreasing
+        factor=0.1,  # Multiply LR by this factor
+        patience=2,  # Number of epochs with no improvement after which LR will be reduced
+        verbose=True,  # Print message when LR is reduced
+        min_lr=1e-6,  # Lower bound on LR
+    )
 
     for epoch in range(epochs):
         total_loss = 0
