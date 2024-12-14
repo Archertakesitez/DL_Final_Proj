@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from timm.models.vision_transformer import VisionTransformer
 
 
+
 class CNNEncoder(nn.Module):
     """
     Implements Encθ(oₙ) from the JEPA formulation.
@@ -16,25 +17,34 @@ class CNNEncoder(nn.Module):
         self.conv_layers = nn.Sequential(
             nn.Conv2d(2, 32, kernel_size=4, stride=2, padding=1),  # -> (32, 32, 32)
             nn.BatchNorm2d(32),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
+            
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # -> (64, 16, 16)
             nn.BatchNorm2d(64),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
+            
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # -> (128, 8, 8)
             nn.BatchNorm2d(128),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
+            
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # -> (256, 4, 4)
             nn.BatchNorm2d(256),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
+            
+            nn.AdaptiveAvgPool2d((1, 1))  # Global average pooling -> (256, 1, 1)
         )
 
+        # Fully connected layers
         self.fc = nn.Sequential(
-            nn.Linear(256 * 4 * 4, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
+            nn.Flatten(),  # Flattens (B, 256, 1, 1) to (B, 256)
+            nn.Linear(256, 512), 
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout(0.3),  # Dropout for regularization
+            nn.Linear(512, latent_dim)
         )
 
     def forward(self, x):
         x = self.conv_layers(x)
-        x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
 
@@ -89,13 +99,13 @@ class JEPAModel(nn.Module):
         self.repr_dim = latent_dim  # Required by evaluator.py
 
         # Online networks
-        self.encoder = ViTEncoder(latent_dim)
+        self.encoder = CNNEncoder(latent_dim)
         self.action_encoder = nn.Linear(2, latent_dim)
         self.predictor = Predictor(latent_dim, action_dim=latent_dim)
 
         # Target network (momentum-updated)
         if use_momentum:
-            self.target_encoder = ViTEncoder(latent_dim)
+            self.target_encoder = CNNEncoder(latent_dim)
             # Initialize target network with same weights
             for param_q, param_k in zip(
                 self.encoder.parameters(), self.target_encoder.parameters()
