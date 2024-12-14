@@ -62,6 +62,27 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=50.0, cov_coef=2.0):
     return total_loss / T
 
 
+def byol_loss(predictions, targets, temperature=0.1):
+    """
+    BYOL loss: negative cosine similarity
+    Args:
+        predictions: predicted future states [B, T, D]
+        targets: target future states [B, T, D]
+        temperature: temperature parameter for similarity scaling
+    """
+    B, T, D = predictions.shape
+    total_loss = 0
+
+    for t in range(T):
+        pred_norm = F.normalize(predictions[:, t], dim=1)
+        target_norm = F.normalize(targets[:, t], dim=1)
+        similarity = torch.einsum("bd,bd->b", pred_norm, target_norm) / temperature
+        loss = -similarity.mean()
+        total_loss += loss
+
+    return total_loss / T
+
+
 def monitor_collapse(z1, epoch):
     """Monitor for signs of collapse"""
     with torch.no_grad():
@@ -91,6 +112,10 @@ def train_jepa(
     patience=4,
     min_delta=1e-4,
 ):
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print("Cleared CUDA cache before training")
+
     model.train()
 
     best_loss = float("inf")
@@ -113,7 +138,7 @@ def train_jepa(
             optimizer.zero_grad()
 
             predictions, targets = model(states, actions)
-            loss = vicreg_loss(predictions, targets)
+            loss = byol_loss(predictions, targets)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
