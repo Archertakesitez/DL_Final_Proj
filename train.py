@@ -20,7 +20,8 @@ def vicreg_loss(z1, z2, sim_coef=50.0, std_coef=10.0, cov_coef=2.0):
     B, T, D = z1.shape
 
     total_loss = 0
-    for t in range(T):
+    # Start from t=1 since t=0 is just the initial encoding
+    for t in range(1, T):
         # Take each timestep: [B, D]
         z1_t = z1[:, t]
         z2_t = z2[:, t]
@@ -46,7 +47,7 @@ def vicreg_loss(z1, z2, sim_coef=50.0, std_coef=10.0, cov_coef=2.0):
         loss = sim_coef * sim_loss + std_coef * std_loss + cov_coef * cov_loss
         total_loss += loss
 
-    return total_loss / T  # Average over timesteps
+    return total_loss / (T - 1)  # Average over timesteps (excluding t=0)
 
 
 def train_jepa(
