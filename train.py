@@ -48,6 +48,26 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
 
     return total_loss / T  # Average over timesteps
 
+def byol_loss(predictions, targets, temperature=0.1):
+    """
+    BYOL loss: negative cosine similarity
+    Args:
+        predictions: predicted future states [B, T, D]
+        targets: target future states [B, T, D]
+        temperature: temperature parameter for similarity scaling
+    """
+    B, T, D = predictions.shape
+    total_loss = 0
+
+    for t in range(T):
+        pred_norm = F.normalize(predictions[:, t], dim=1)
+        target_norm = F.normalize(targets[:, t], dim=1)
+        similarity = torch.einsum("bd,bd->b", pred_norm, target_norm) / temperature
+        loss = -similarity.mean()
+        total_loss += loss
+
+    return total_loss / T
+
 
 def train_jepa(
     model,
@@ -80,7 +100,7 @@ def train_jepa(
 
             predictions = model(states, actions)
             targets = model.compute_target(states)
-            loss = vicreg_loss(predictions, targets)
+            loss = byol_loss(predictions, targets)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
