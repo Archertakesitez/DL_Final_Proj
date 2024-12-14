@@ -15,7 +15,7 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=15.0, cov_coef=4.0, target_std=0.3):
+def vicreg_loss(z1, z2, sim_coef=100.0, std_coef=10.0, cov_coef=1.0, target_std=0.3):
     """
     VicReg loss with stronger variance stabilization
     """
@@ -54,7 +54,7 @@ def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=15.0, cov_coef=4.0, target_std=0
     return total_loss / (T - 1)
 
 
-def apply_trajectory_augmentations(states, actions, p=0.5):
+def apply_trajectory_augmentations(states, actions, p=0.3):
     """
     Apply augmentations that preserve action-state relationships
     states: [B, T, C, H, W]
@@ -182,7 +182,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 32
-    LEARNING_RATE = 1e-6
+    LEARNING_RATE = 3e-5
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

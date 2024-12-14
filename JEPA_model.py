@@ -3,6 +3,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class ResidualBlock(nn.Module):
+    """
+    Residual block for preserving spatial information
+    """
+
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=stride, padding=1
+        )
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # Skip connection with 1x1 conv if channels change
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels),
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
 class Encoder(nn.Module):
     """
     Implements Encθ(oₙ) from the JEPA formulation.
@@ -12,27 +42,53 @@ class Encoder(nn.Module):
     def __init__(self, latent_dim=256):
         super().__init__()
         # Input: (B, 2, 65, 65) - 2 channels: agent position and wall/border layout
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(2, 32, kernel_size=4, stride=2, padding=1),  # -> (32, 32, 32)
+
+        # Initial convolution
+        self.init_conv = nn.Sequential(
+            nn.Conv2d(2, 32, kernel_size=3, stride=1, padding=1),  # -> (32, 65, 65)
             nn.BatchNorm2d(32),
-            nn.ReLU(True),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # -> (64, 16, 16)
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # -> (128, 8, 8)
-            nn.BatchNorm2d(128),
-            nn.ReLU(True),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # -> (256, 4, 4)
-            nn.BatchNorm2d(256),
             nn.ReLU(True),
         )
 
+        # Only two residual blocks at critical points
+        self.res1 = ResidualBlock(
+            32, 64
+        )  # First residual to preserve initial spatial info
+        self.pool1 = nn.MaxPool2d(2, 2)  # -> (64, 32, 32)
+
+        # Regular convolutions for middle layers
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.MaxPool2d(2, 2),  # -> (128, 16, 16)
+        )
+
+        # Second residual before final spatial reduction
+        self.res2 = ResidualBlock(
+            128, 256
+        )  # Second residual to preserve important features
+        self.pool2 = nn.MaxPool2d(2, 2)  # -> (256, 8, 8)
+
+        # FC layers
         self.fc = nn.Sequential(
-            nn.Linear(256 * 4 * 4, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
+            nn.Linear(256 * 8 * 8, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
         )
 
     def forward(self, x):
-        x = self.conv_layers(x)
+        # Initial convolution
+        x = self.init_conv(x)
+
+        # First residual + pooling
+        x = self.pool1(self.res1(x))
+
+        # Middle convolution
+        x = self.conv1(x)
+
+        # Second residual + pooling
+        x = self.pool2(self.res2(x))
+
+        # FC layers
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
@@ -42,13 +98,10 @@ class Predictor(nn.Module):
     def __init__(self, latent_dim=256, action_dim=2):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(latent_dim + action_dim, 512),
-            nn.LayerNorm(512),
+            nn.Linear(latent_dim + action_dim, 384),
+            nn.LayerNorm(384),
             nn.ReLU(True),
-            nn.Linear(512, 512),
-            nn.LayerNorm(512),
-            nn.ReLU(True),
-            nn.Linear(512, latent_dim),
+            nn.Linear(384, latent_dim),
         )
 
     def forward(self, state, action):

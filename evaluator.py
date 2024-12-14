@@ -20,7 +20,7 @@ from normalizer import Normalizer
 @dataclass
 class ProbingConfig(ConfigBase):
     probe_targets: str = "locations"
-    lr: float = 1e-2
+    lr: float = 1e-3
     epochs: int = 20
     schedule: LRSchedule = LRSchedule.Cosine
     sample_timesteps: int = 30
