@@ -86,7 +86,7 @@ def train_jepa(
     best_model_state = None
 
     # Initialize with optimizer
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, Tmax=50)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
     for epoch in range(epochs):
         total_loss = 0
