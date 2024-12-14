@@ -152,22 +152,27 @@ class JEPAModel(nn.Module):
         """
         # Initial state encoding
         z_t = self.encoder(states[:, 0])
-        predictions = [z_t]
+        predictions = []
 
-        # Get all target encodings at once
-        with torch.no_grad():
-            targets = self.compute_target(states)
-
-        # Predict future states with teacher forcing
-        for t in range(actions.shape[1]):
-            # Randomly decide whether to use ground truth or prediction
-            if torch.rand(1).item() < teacher_forcing_ratio:
-                # Teacher forcing: use target encoding
-                z_t = self.predict_future_state(targets[:, t], actions[:, t])
-            else:
-                # Recurrent: use previous prediction
+        # During evaluation (when states has only 1 timestep), don't use teacher forcing
+        if states.shape[1] == 1:
+            for t in range(actions.shape[1]):
                 z_t = self.predict_future_state(z_t, actions[:, t])
-            predictions.append(z_t)
+                predictions.append(z_t)
+        else:
+            # Training mode with teacher forcing
+            with torch.no_grad():
+                targets = self.compute_target(states)
+
+            for t in range(actions.shape[1]):
+                if torch.rand(1).item() < teacher_forcing_ratio:
+                    target_idx = min(t, targets.shape[1] - 1)
+                    z_t = self.predict_future_state(
+                        targets[:, target_idx], actions[:, t]
+                    )
+                else:
+                    z_t = self.predict_future_state(z_t, actions[:, t])
+                predictions.append(z_t)
 
         predictions = torch.stack(predictions, dim=1)
-        return predictions, targets
+        return predictions, None if states.shape[1] == 1 else targets
