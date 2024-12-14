@@ -160,12 +160,10 @@ class JEPAModel(nn.Module):
 
         # Predict future states with teacher forcing
         for t in range(actions.shape[1]):
-            # Randomly decide whether to use ground truth or prediction
             if torch.rand(1).item() < teacher_forcing_ratio:
-                # Teacher forcing: use target encoding
-                z_t = self.predict_future_state(targets[:, t], actions[:, t])
+                target_idx = min(t, targets.shape[1] - 1)
+                z_t = self.predict_future_state(targets[:, target_idx], actions[:, t])
             else:
-                # Recurrent: use previous prediction
                 z_t = self.predict_future_state(z_t, actions[:, t])
             predictions.append(z_t)
 
