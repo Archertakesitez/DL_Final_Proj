@@ -117,8 +117,23 @@ class ProbingEvaluator:
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
                 # print("Evaluator - init_states shape:", init_states.shape)
                 # print("Evaluator - actions shape:", batch.actions.shape)
+
+                # Debug input shapes
+                print("\nInput shapes:")
+                print(
+                    f"batch.states shape: {batch.states.shape}"
+                )  # Should be [B, T, 2, 65, 65]
+                print(
+                    f"batch.actions shape: {batch.actions.shape}"
+                )  # Should be [B, T-1, 2]
+                print(
+                    f"init_states shape: {init_states.shape}"
+                )  # Should be [B, 1, 2, 65, 65]
+
                 pred_encs, _ = model(states=init_states, actions=batch.actions)
-                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
+                print(f"pred_encs shape after model: {pred_encs.shape}")
+                pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
+                print(f"pred_encs shape after transpose: {pred_encs.shape}")
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
@@ -132,16 +147,20 @@ class ProbingEvaluator:
                 losses_list = []
 
                 target = getattr(batch, "locations").cuda()
+                print(
+                    f"target shape before normalize: {target.shape}"
+                )  # Should be [B, T, 2]
                 target = self.normalizer.normalize_location(target)
+                print(f"target shape after normalize: {target.shape}")
                 # print("target shape before sampling:", target.shape)
 
                 if (
                     config.sample_timesteps is not None
                     and config.sample_timesteps < n_steps
                 ):
-                    sample_shape = (config.sample_timesteps,) + pred_encs.shape[1:]
                     # we only randomly sample n timesteps to train prober.
                     # we most likely do this to avoid OOM
+                    sample_shape = (config.sample_timesteps,) + pred_encs.shape[1:]
                     sampled_pred_encs = torch.empty(
                         sample_shape,
                         dtype=pred_encs.dtype,
@@ -157,10 +176,22 @@ class ProbingEvaluator:
 
                     pred_encs = sampled_pred_encs
                     target = sampled_target_locs.cuda()
+                    print(f"After sampling - pred_encs shape: {pred_encs.shape}")
+                    print(f"After sampling - target shape: {target.shape}")
 
-                pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
-                # print("pred_locs final shape:", pred_locs.shape)
-                # print("target final shape:", target.shape)
+                # Forward through prober
+                pred_locs = self.prober(pred_encs.reshape(-1, pred_encs.shape[-1]))
+                print(f"pred_locs shape after prober: {pred_locs.shape}")
+                pred_locs = pred_locs.reshape(
+                    pred_encs.shape[0], pred_encs.shape[1], -1
+                )
+                print(f"pred_locs final shape: {pred_locs.shape}")
+
+                # Before loss
+                print("\nBefore loss computation:")
+                print(f"pred_locs final shape: {pred_locs.shape}")
+                print(f"target final shape: {target.shape}")
+
                 losses = location_losses(pred_locs, target)
                 per_probe_loss = losses.mean()
 
