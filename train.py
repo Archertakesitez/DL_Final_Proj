@@ -54,6 +54,34 @@ def vicreg_loss(z1, z2, sim_coef=75.0, std_coef=15.0, cov_coef=4.0, target_std=0
     return total_loss / (T - 1)
 
 
+def apply_trajectory_augmentations(states, actions, p=0.5):
+    """
+    Apply augmentations that preserve action-state relationships
+    states: [B, T, C, H, W]
+    actions: [B, T-1, 2] (delta_x, delta_y)
+    """
+    B, T, C, H, W = states.shape
+
+    # Horizontal flip - need to flip both states AND actions
+    if torch.rand(1) < p:
+        states = torch.flip(states, dims=[-1])
+        actions[..., 0] = -actions[..., 0]  # Flip x-direction actions
+
+    # 90-degree rotations - need to transform actions accordingly
+    if torch.rand(1) < p:
+        k = torch.randint(1, 4, (1,))  # 1-3 times 90 degrees
+        states = torch.rot90(states, k=k, dims=[-2, -1])
+
+        # Rotate actions by k*90 degrees
+        for _ in range(k):
+            # (x,y) -> (-y,x) for 90-degree rotation
+            actions_x = actions[..., 0].clone()
+            actions[..., 0] = -actions[..., 1]
+            actions[..., 1] = actions_x
+
+    return states, actions
+
+
 def train_jepa(
     model,
     train_loader,
@@ -82,6 +110,9 @@ def train_jepa(
         for batch_idx, batch in enumerate(progress_bar):
             states = batch.states.to(device)
             actions = batch.actions.to(device)
+
+            # Apply trajectory-consistent augmentations
+            states, actions = apply_trajectory_augmentations(states, actions)
 
             optimizer.zero_grad()
             predictions, targets = model(states, actions)
