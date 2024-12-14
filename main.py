@@ -43,10 +43,14 @@ def load_data(device):
 
 def load_model():
     """Load or initialize the model."""
-    # TODO: Replace MockModel with your trained model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = JEPAModel(latent_dim=256, use_momentum=True).to(device)
-    model.load_state_dict(torch.load("model_weights.pth"))
+    
+    # Load checkpoint
+    checkpoint = torch.load("model_weights.pth")
+    # Extract just the model state dict
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
     return model
 
 
