@@ -115,29 +115,29 @@ class JEPAModel(nn.Module):
                 1.0 - self.momentum
             )
 
-    def forward(self, states, actions):
+    def forward(self, initial_states, actions):
         """
         Forward pass implementing recurrent JEPA prediction.
         Args:
-            states: Observations [B, 1, C, H, W]  # Only initial state
-            actions: Action sequence [B, T-1, 2]  # T-1 actions
+            initial_states: Initial observations [B, 2, H, W]  # Only initial state
+            actions: Action sequence [B, T, 2]  # T actions for T+1 total timesteps
         Returns:
-            predictions: Predicted latent states [B, T, D]  # T total predictions
+            predictions: Predicted latent states [B, T+1, D]  # T+1 total predictions including initial state
         """
-        B = states.shape[0]
-        T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
+        B = initial_states.shape[0]
+        T = actions.shape[1]  # Number of actions
 
         # Initial encoding
-        curr_state = self.encoder(states[:, 0])  # [B, D]
+        curr_state = self.encoder(initial_states)  # [B, D]
         predictions = [curr_state]
 
         # Predict future states
-        for t in range(T - 1):
+        for t in range(T):
             curr_action = actions[:, t]  # [B, 2]
             curr_state = self.predictor(curr_state, curr_action)
             predictions.append(curr_state)
 
-        predictions = torch.stack(predictions, dim=1)  # [B, T, D]
+        predictions = torch.stack(predictions, dim=1)  # [B, T+1, D]
         return predictions
 
     def compute_target(self, states):

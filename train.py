@@ -128,17 +128,60 @@ def visualize_batch(states, actions, batch_idx, epoch, writer, max_samples=8):
         plt.close(fig)
 
 
+def apply_augmentations(states, actions):
+    """
+    Apply data augmentations to states and actions
+    Args:
+        states: [B, T, 2, H, W]
+        actions: [B, T-1, 2]
+    Returns:
+        Augmented states and actions
+    """
+    B, T = states.shape[:2]
+    
+    # 1. Random horizontal flip (50% probability)
+    if random.random() > 0.5:
+        states = torch.flip(states, dims=[3])
+        actions = actions.clone()
+        actions[:, :, 0] = -actions[:, :, 0]  # Flip x-direction actions
+
+    # 2. Random vertical flip (50% probability)
+    if random.random() > 0.5:
+        states = torch.flip(states, dims=[4])
+        actions = actions.clone()
+        actions[:, :, 1] = -actions[:, :, 1]  # Flip y-direction actions
+
+    # 3. Random rotation (90 degree rotations)
+    k = random.choice([0, 1, 2, 3])  # Number of 90-degree rotations
+    if k > 0:
+        states = torch.rot90(states, k, dims=[3, 4])
+        actions = actions.clone()
+        # Rotate actions accordingly
+        for i in range(k):
+            old_x = actions[:, :, 0].clone()
+            old_y = actions[:, :, 1].clone()
+            actions[:, :, 0] = -old_y
+            actions[:, :, 1] = old_x
+
+    # 4. Random brightness/contrast for agent channel (first channel)
+    if random.random() > 0.5:
+        brightness = 0.8 + random.random() * 0.4  # 0.8 to 1.2
+        states[:, :, 0] = torch.clamp(states[:, :, 0] * brightness, 0, 1)
+
+    return states, actions
+
+
 def train_jepa(
     model,
     train_loader,
-    val_loader,  # Added validation loader
+    val_loader,
     optimizer,
     device,
     epochs=100,
     log_interval=10,
     patience=4,
     min_delta=1e-4,
-    warmup_epochs=5,  # Added warmup epochs
+    warmup_epochs=5,
 ):
     model.train()
     writer = SummaryWriter('runs/jepa_experiment')  # TensorBoard logging
@@ -159,7 +202,6 @@ def train_jepa(
     )
 
     for epoch in range(epochs):
-        # Training
         model.train()
         total_train_loss = 0
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
@@ -168,15 +210,18 @@ def train_jepa(
             states = batch.states.to(device)
             actions = batch.actions.to(device)
 
-            # Data augmentation (random horizontal flip)
-            if random.random() > 0.5:
-                states = torch.flip(states, dims=[3])  # Flip horizontally
-                actions[:, :, 0] = -actions[:, :, 0]  # Flip x-direction actions
+            # Apply augmentations during training
+            states, actions = apply_augmentations(states, actions)
 
             optimizer.zero_grad()
 
-            predictions = model(states, actions)
+            # Extract initial state and make predictions
+            initial_states = states[:, 0]  # [B, 2, H, W]
+            predictions = model(initial_states, actions)
+            
+            # Compute target representations for all states
             targets = model.compute_target(states)
+            
             loss = byol_loss(predictions, targets)
 
             loss.backward()
@@ -212,7 +257,8 @@ def train_jepa(
                 states = batch.states.to(device)
                 actions = batch.actions.to(device)
                 
-                predictions = model(states, actions)
+                initial_states = states[:, 0]
+                predictions = model(initial_states, actions)
                 targets = model.compute_target(states)
                 loss = byol_loss(predictions, targets)
                 total_val_loss += loss.item()
