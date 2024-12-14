@@ -69,21 +69,27 @@ class Prober(torch.nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, repr_dim):
+    def __init__(self, repr_dim, input_height=80, input_width=80):
         super().__init__()
         self.conv_net = nn.Sequential(
             nn.Conv2d(
                 2, 32, kernel_size=3, stride=2, padding=1
-            ),  # [BS, 2, 64, 64] -> [BS, 32, 32, 32]
+            ),  # [BS, 2, 80, 80] -> [BS, 32, 40, 40]
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # [BS, 64, 16, 16]
+            nn.Conv2d(
+                32, 64, kernel_size=3, stride=2, padding=1
+            ),  # -> [BS, 64, 20, 20]
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # [BS, 128, 8, 8]
+            nn.Conv2d(
+                64, 128, kernel_size=3, stride=2, padding=1
+            ),  # -> [BS, 128, 10, 10]
             nn.ReLU(),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # [BS, 256, 4, 4]
+            nn.Conv2d(
+                128, 256, kernel_size=3, stride=2, padding=1
+            ),  # -> [BS, 256, 5, 5]
             nn.ReLU(),
         )
-        self.fc = nn.Linear(256 * 4 * 4, repr_dim)
+        self.fc = nn.Linear(256 * 5 * 5, repr_dim)
 
     def forward(self, x):
         x = self.conv_net(x)
@@ -184,3 +190,10 @@ class JEPA(nn.Module):
 
         loss = repr_loss + 25 * std_loss + 1 * cov_loss
         return loss
+
+
+def compute_output_size(input_size, kernel_size, stride, padding, num_layers):
+    output_size = input_size
+    for _ in range(num_layers):
+        output_size = (output_size + 2 * padding - kernel_size) // stride + 1
+    return output_size
