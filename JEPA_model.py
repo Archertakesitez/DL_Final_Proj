@@ -136,21 +136,30 @@ class JEPAModel(nn.Module):
             predictions: Predicted latent states [B, T, D]  # T total predictions
         """
         # print("Shape of states before augmentation:", states.shape)
-        B = states.shape[0]
-        T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
+        B, T = actions.shape[:2]  # Get batch size and sequence length from actions
 
-        # Initial encoding
-        curr_state = self.encoder(states[:, 0])  # [B, D]
-        predictions = [curr_state]
+        # Initial encoding (Enc_θ)
+        s0 = self.encoder(states[:, 0])  # [B, D]
+        t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
 
-        # Predict future states
-        for t in range(T - 1):
-            curr_action = self.action_encoder(actions[:, t])  # [B, 2] or [B, latent_dim]
-            curr_state = self.predictor(curr_state, curr_action)
-            predictions.append(curr_state)
+        # Predict future states recursively (Pred_φ)
+        predictions = [s0]
+        targets = [t0]
+
+        for t in range(T - 1):  # T-1 because we already have initial state
+            # Use previous prediction and current action to predict next state
+            pred_t = self.predictor(predictions[-1], actions[:, t])
+            targ_t = self.predictor(
+                targets[-1], actions[:, t]
+            )  # Use same predictor for target
+
+            predictions.append(pred_t)
+            targets.append(targ_t)
 
         predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-        return predictions
+        targets = torch.stack(targets, dim=1)  # [B, T, D]
+
+        return predictions, targets
 
     def compute_target(self, states):
         """Compute target representations for all states"""
