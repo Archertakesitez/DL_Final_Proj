@@ -117,10 +117,33 @@ class ProbingEvaluator:
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
                 # print("Evaluator - init_states shape:", init_states.shape)
                 # print("Evaluator - actions shape:", batch.actions.shape)
-                pred_encs, _ = model(states=init_states, actions=batch.actions)
-                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
 
-                # Make sure pred_encs has shape (T, BS, D) at this point
+                # Need to get predictions for all timesteps
+                all_predictions = []
+                current_state = init_states
+
+                # First prediction (t=0)
+                pred_enc, _ = model(states=current_state, actions=batch.actions[:, 0:1])
+                all_predictions.append(pred_enc)
+
+                # Predict remaining steps
+                for t in range(batch.actions.shape[1] - 1):  # For each remaining action
+                    current_state = batch.states[:, t + 1 : t + 2]
+                    pred_enc, _ = model(
+                        states=current_state, actions=batch.actions[:, t + 1 : t + 2]
+                    )
+                    all_predictions.append(pred_enc)
+
+                # Add the final state prediction
+                final_state = batch.states[:, -1:]
+                pred_enc, _ = model(states=final_state, actions=batch.actions[:, -1:])
+                all_predictions.append(pred_enc)
+
+                # Combine all predictions to match target shape [64, 17, 2]
+                pred_encs = torch.cat(
+                    all_predictions, dim=1
+                )  # Should give [64, 17, 256]
+                pred_encs = pred_encs.transpose(0, 1)  # [17, 64, 256]
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
