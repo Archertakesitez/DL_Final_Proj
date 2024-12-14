@@ -11,7 +11,7 @@ class Encoder(nn.Module):
 
     def __init__(self, latent_dim=256):
         super().__init__()
-        # Input: (B, 2, 65, 65) - 2 channels: agent position and wall/border layout
+        # Input: (B, 2, 64, 64) - 2 channels: agent position and wall/border layout
         self.conv_layers = nn.Sequential(
             nn.Conv2d(2, 32, kernel_size=4, stride=2, padding=1),  # -> (32, 32, 32)
             nn.BatchNorm2d(32),
@@ -27,33 +27,57 @@ class Encoder(nn.Module):
             nn.ReLU(True),
         )
 
+        # Add self-attention layer for better wall/door understanding
+        self.attention = nn.MultiheadAttention(
+            embed_dim=256, 
+            num_heads=8,
+            batch_first=True
+        )
+
         self.fc = nn.Sequential(
-            nn.Linear(256 * 4 * 4, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
+            nn.Linear(256 * 4 * 4, 512),
+            nn.ReLU(True),
+            nn.Dropout(0.1),  # Add dropout for regularization
+            nn.Linear(512, latent_dim)
         )
 
     def forward(self, x):
         x = self.conv_layers(x)
+        
+        # Apply attention
+        B, C, H, W = x.shape
+        x_flat = x.flatten(2).transpose(1, 2)  # [B, H*W, C]
+        x_att, _ = self.attention(x_flat, x_flat, x_flat)
+        x_att = x_att.transpose(1, 2).reshape(B, C, H, W)
+        
+        # Combine attention output with original features
+        x = x + x_att  # Residual connection
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        return x
+        return F.normalize(x, dim=-1)  # Normalize output representations
 
 
 class Predictor(nn.Module):
-    def __init__(self, latent_dim=256, action_dim=2):
+    def __init__(self, latent_dim=256, action_dim=2, dropout_rate=0.1):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(latent_dim + action_dim, 512),
             nn.LayerNorm(512),
             nn.ReLU(True),
+            nn.Dropout(dropout_rate),
             nn.Linear(512, 512),
             nn.LayerNorm(512),
             nn.ReLU(True),
-            nn.Linear(512, latent_dim),
+            nn.Dropout(dropout_rate),
+            nn.Linear(512, latent_dim)
         )
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
-        return self.net(x)
+        next_state = self.net(x)
+        # Add residual connection to help maintain state information
+        next_state = state + next_state
+        return F.normalize(next_state, dim=-1)  # Normalize output
 
 
 class JEPAModel(nn.Module):
