@@ -91,30 +91,43 @@ class JEPAModel(nn.Module):
                 1.0 - self.momentum
             )
 
-    def forward(self, states, actions):
+    def predict_future_state(self, state, action):
+        """Helper to predict next state given current state and action"""
+        return self.predictor(state, action)
+
+    def forward(self, states, actions, teacher_forcing_ratio=0.5):
         """
-        Forward pass implementing recurrent JEPA prediction.
+        Forward pass implementing recurrent JEPA prediction with teacher forcing.
         Args:
-            states: Observations [B, 1, C, H, W]  # Only initial state
+            states: Observations [B, T, C, H, W]  # Full sequence for teacher forcing
             actions: Action sequence [B, T-1, 2]  # T-1 actions
+            teacher_forcing_ratio: Probability of using teacher forcing (0.5 default)
         Returns:
             predictions: Predicted latent states [B, T, D]  # T total predictions
+            targets: Target latent states [B, T, D]  # For training
         """
         B = states.shape[0]
         T = actions.shape[1] + 1  # Total timesteps = num_actions + 1
 
         # Initial encoding
-        curr_state = self.encoder(states[:, 0])  # [B, D]
-        predictions = [curr_state]
+        z_t = self.encoder(states[:, 0])  # [B, D]
+        predictions = [z_t]
 
-        # Predict future states
+        # Get target encodings for teacher forcing
+        with torch.no_grad():
+            targets = self.compute_target(states)
+
+        # Predict future states with teacher forcing
         for t in range(T - 1):
-            curr_action = actions[:, t]  # [B, 2]
-            curr_state = self.predictor(curr_state, curr_action)
-            predictions.append(curr_state)
+            # Teacher forcing: use ground truth previous state with probability
+            if self.training and torch.rand(1).item() < teacher_forcing_ratio:
+                z_t = self.predict_future_state(targets[:, t], actions[:, t])
+            else:
+                z_t = self.predict_future_state(z_t, actions[:, t])
+            predictions.append(z_t)
 
         predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-        return predictions
+        return predictions, targets
 
     def compute_target(self, states):
         """Compute target representations for all states"""

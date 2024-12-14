@@ -78,8 +78,7 @@ def train_jepa(
 
             optimizer.zero_grad()
 
-            predictions = model(states, actions)
-            targets = model.compute_target(states)
+            predictions, targets = model(states, actions)
             loss = vicreg_loss(predictions, targets)
 
             loss.backward()
