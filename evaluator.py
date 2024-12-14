@@ -20,7 +20,7 @@ from normalizer import Normalizer
 @dataclass
 class ProbingConfig(ConfigBase):
     probe_targets: str = "locations"
-    lr: float = 1e-3
+    lr: float = 0.0002
     epochs: int = 20
     schedule: LRSchedule = LRSchedule.Cosine
     sample_timesteps: int = 30
@@ -274,10 +274,10 @@ class ProbingEvaluator:
             # Make predictions using prober
             pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
             # Unnormalize predictions if they were normalized
-            pred_locs = self.normalizer.unnormalize_location(pred_locs)
-            target = self.normalizer.unnormalize_location(
-                target
-            )  # Unnormalize target too
+            # pred_locs = self.normalizer.unnormalize_location(pred_locs)
+            # target = self.normalizer.unnormalize_location(
+            #     target
+            # )  # Unnormalize target too
 
             # Debug prints
             print("Pred locs shape:", pred_locs.shape)
