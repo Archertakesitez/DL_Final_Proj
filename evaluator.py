@@ -119,6 +119,11 @@ class ProbingEvaluator:
                     0
                 ]  # Get only predictions
                 pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
+
+                # Debug prints for prediction shapes
+                print("pred_encs shape after model:", pred_encs.shape)
+                print("batch.actions shape:", batch.actions.shape)
+                print("batch.states shape:", batch.states.shape)
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
@@ -164,6 +169,8 @@ class ProbingEvaluator:
                 pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
                 # print("pred_locs final shape:", pred_locs.shape)
                 # print("target final shape:", target.shape)
+                print("pred_locs shape:", pred_locs.shape)
+                print("target shape before loss:", target.shape)
                 losses = location_losses(pred_locs, target)
                 per_probe_loss = losses.mean()
 
