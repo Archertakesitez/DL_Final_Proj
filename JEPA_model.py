@@ -130,12 +130,6 @@ class JEPAModel(nn.Module):
             ):
                 param_k.data.copy_(param_q.data)
                 param_k.requires_grad = False
-        else:
-            # If not using momentum, you can either:
-            # 1) Not define a target_encoder at all, and rely on encoder for targets.
-            # 2) Define a fixed target encoder as a copy of encoder (less common).
-            # Here we omit the target encoder when not using momentum.
-            self.target_encoder = None
 
     @torch.no_grad()
     def momentum_update(self):
