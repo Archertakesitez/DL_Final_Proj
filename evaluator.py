@@ -118,32 +118,8 @@ class ProbingEvaluator:
                 # print("Evaluator - init_states shape:", init_states.shape)
                 # print("Evaluator - actions shape:", batch.actions.shape)
 
-                # Need to get predictions for all timesteps
-                all_predictions = []
-                current_state = init_states
-
-                # First prediction (t=0)
-                pred_enc, _ = model(states=current_state, actions=batch.actions[:, 0:1])
-                all_predictions.append(pred_enc)
-
-                # Predict remaining steps
-                for t in range(batch.actions.shape[1] - 1):  # For each remaining action
-                    current_state = batch.states[:, t + 1 : t + 2]
-                    pred_enc, _ = model(
-                        states=current_state, actions=batch.actions[:, t + 1 : t + 2]
-                    )
-                    all_predictions.append(pred_enc)
-
-                # Add the final state prediction
-                final_state = batch.states[:, -1:]
-                pred_enc, _ = model(states=final_state, actions=batch.actions[:, -1:])
-                all_predictions.append(pred_enc)
-
-                # Combine all predictions to match target shape [64, 17, 2]
-                pred_encs = torch.cat(
-                    all_predictions, dim=1
-                )  # Should give [64, 17, 256]
-                pred_encs = pred_encs.transpose(0, 1)  # [17, 64, 256]
+                pred_encs, _ = model(states=init_states, actions=batch.actions)
+                pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
@@ -156,6 +132,7 @@ class ProbingEvaluator:
 
                 target = getattr(batch, "locations").cuda()
                 target = self.normalizer.normalize_location(target)
+                target = target[:, 1:, :]  # Remove first timestep
                 # print("target shape before sampling:", target.shape)
 
                 if (
@@ -240,60 +217,25 @@ class ProbingEvaluator:
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
             # TODO: Forward pass through your model
-            init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
-
-            # Need to get predictions for all timesteps
-            all_predictions = []
-            current_state = init_states
-
-            # First prediction (t=0)
-            pred_enc, _ = model(states=current_state, actions=batch.actions[:, 0:1])
-            all_predictions.append(pred_enc)
-
-            # Predict remaining steps
-            for t in range(batch.actions.shape[1] - 1):
-                current_state = batch.states[:, t + 1 : t + 2]
-                pred_enc, _ = model(
-                    states=current_state, actions=batch.actions[:, t + 1 : t + 2]
-                )
-                all_predictions.append(pred_enc)
-
-            # Add the final state prediction
-            final_state = batch.states[:, -1:]
-            pred_enc, _ = model(states=final_state, actions=batch.actions[:, -1:])
-            all_predictions.append(pred_enc)
-
-            # Combine all predictions
-            pred_encs = torch.cat(all_predictions, dim=1)  # Should give [64, 17, 256]
-            pred_encs = pred_encs.transpose(0, 1)  # [17, 64, 256]
+            init_states = batch.states[:, 0:1]  # [B, 1, C, H, W]
+            pred_encs, _ = model(
+                states=init_states, actions=batch.actions
+            )  # Get predictions for future steps
+            pred_encs = pred_encs.transpose(0, 1)  # [B, T, D] -> [T, B, D]
             ################################################################################
 
+            # Process target
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
+            target = target[:, 1:, :]  # Remove first timestep to match predictions
 
             # Make predictions using prober
-            pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
-            # Unnormalize predictions if they were normalized
-            # pred_locs = self.normalizer.unnormalize_location(pred_locs)
-            # target = self.normalizer.unnormalize_location(
-            #     target
-            # )  # Unnormalize target too
-
-            # Debug prints
-            print("Pred locs shape:", pred_locs.shape)
-            print("Target shape:", target.shape)
-            print("Pred range:", pred_locs.min().item(), pred_locs.max().item())
-            print("Target range:", target.min().item(), target.max().item())
+            pred_locs = torch.stack(
+                [prober(x) for x in pred_encs], dim=1
+            )  # [B, T-1, 2]
 
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
-
-            # Before visualization
-            print(f"\nBatch {idx} statistics:")
-            print(f"Predicted locations shape: {pred_locs.shape}")
-            print(f"Target locations shape: {target.shape}")
-            print(f"Prediction range: ({pred_locs.min():.3f}, {pred_locs.max():.3f})")
-            print(f"Target range: ({target.min():.3f}, {target.max():.3f})")
 
             # Visualize every N batches
             if idx % 10 == 0:
