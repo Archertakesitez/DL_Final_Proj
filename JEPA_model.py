@@ -130,6 +130,8 @@ class JEPAModel(nn.Module):
             ):
                 param_k.data.copy_(param_q.data)
                 param_k.requires_grad = False
+        else:
+            self.target_encoder = Encoder(latent_dim)
 
     @torch.no_grad()
     def momentum_update(self):
