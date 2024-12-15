@@ -70,9 +70,15 @@ class Encoder(nn.Module):
         )  # Second residual to preserve important features
         self.pool2 = nn.MaxPool2d(2, 2)  # -> (256, 8, 8)
 
+        # Third residual before final spatial reduction
+        self.res3 = ResidualBlock(
+            128, 256
+        )  # Second residual to preserve important features
+        self.pool3 = nn.MaxPool2d(2, 2)  # -> (256, 4, 4)
+
         # FC layers
         self.fc = nn.Sequential(
-            nn.Linear(256 * 8 * 8, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
+            nn.Linear(256 * 4 * 4, 512), nn.ReLU(True), nn.Linear(512, latent_dim)
         )
 
     def forward(self, x):
@@ -87,6 +93,9 @@ class Encoder(nn.Module):
 
         # Second residual + pooling
         x = self.pool2(self.res2(x))
+
+        # Third residual + pooling
+        x = self.pool3(self.res3(x))
 
         # FC layers
         x = x.view(x.size(0), -1)
