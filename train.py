@@ -50,30 +50,32 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
     return total_loss / (T - 1)
 
 
-def apply_trajectory_augmentations(states, actions, p=0.3):
-    """
-    Apply augmentations that preserve action-state relationships
-    states: [B, T, C, H, W]
-    actions: [B, T-1, 2] (delta_x, delta_y)
-    """
+def apply_advanced_augmentations(states, actions, p=0.3):
+    """Enhanced augmentations specific to the two-room environment"""
     B, T, C, H, W = states.shape
-
-    # Horizontal flip - need to flip both states AND actions
+    
+    # Existing geometric augmentations
     if torch.rand(1) < p:
         states = torch.flip(states, dims=[-1])
-        actions[:, :, 0] = -actions[:, :, 0]  # Flip x-direction actions
-
-    # 90-degree rotations
+        actions[:, :, 0] = -actions[:, :, 0]
+    
+    # New: Random cropping and resizing (maintains spatial relationships)
     if torch.rand(1) < p:
-        k = torch.randint(1, 4, (1,)).item()  # Convert tensor to integer with .item()
-        states = torch.rot90(states, k=k, dims=[-2, -1])
-
-        # Rotate actions by k*90 degrees
-        for _ in range(k):
-            actions_x = actions[:, :, 0].clone()
-            actions[:, :, 0] = -actions[:, :, 1]  # x = -y
-            actions[:, :, 1] = actions_x  # y = x
-
+        scale = 0.8 + 0.4 * torch.rand(1)  # Random scale between 0.8 and 1.2
+        scaled_states = F.interpolate(
+            states.view(-1, C, H, W),
+            scale_factor=scale.item(),
+            mode='bilinear'
+        )
+        states = F.interpolate(scaled_states, size=(H, W), mode='bilinear')
+        states = states.view(B, T, C, H, W)
+        
+    # New: Small random translations (that preserve wall relationships)
+    if torch.rand(1) < p:
+        dx = torch.randint(-2, 3, (1,)).item()
+        dy = torch.randint(-2, 3, (1,)).item()
+        states = torch.roll(states, shifts=(dy, dx), dims=(-2, -1))
+        
     return states, actions
 
 
@@ -107,7 +109,7 @@ def train_jepa(
             actions = batch.actions.to(device)
 
             # Apply trajectory-consistent augmentations
-            states, actions = apply_trajectory_augmentations(states, actions)
+            states, actions = apply_advanced_augmentations(states, actions)
 
             optimizer.zero_grad()
             # Only pass initial states and full action sequence
