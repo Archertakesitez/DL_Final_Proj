@@ -118,8 +118,9 @@ class ProbingEvaluator:
                 # print("Evaluator - init_states shape:", init_states.shape)
                 # print("Evaluator - actions shape:", batch.actions.shape)
 
-                pred_encs, _ = model(states=init_states, actions=batch.actions)
+                pred_encs = model(states=init_states, actions=batch.actions)
                 pred_encs = pred_encs.transpose(0, 1)  # BS, T, D --> T, BS, D
+                # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
 
                 pred_encs = pred_encs.detach()
@@ -132,7 +133,6 @@ class ProbingEvaluator:
 
                 target = getattr(batch, "locations").cuda()
                 target = self.normalizer.normalize_location(target)
-                target = target[:, 1:, :]  # Remove first timestep
                 # print("target shape before sampling:", target.shape)
 
                 if (
@@ -218,16 +218,16 @@ class ProbingEvaluator:
             ################################################################################
             # TODO: Forward pass through your model
             init_states = batch.states[:, 0:1]  # [B, 1, C, H, W]
-            pred_encs, _ = model(
+            pred_encs = model(
                 states=init_states, actions=batch.actions
             )  # Get predictions for future steps
             pred_encs = pred_encs.transpose(0, 1)  # [B, T, D] -> [T, B, D]
+            # Make sure pred_encs has shape (T, BS, D) at this point
             ################################################################################
 
             # Process target
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
-            target = target[:, 1:, :]  # Remove first timestep to match predictions
 
             # Make predictions using prober
             pred_locs = torch.stack(
