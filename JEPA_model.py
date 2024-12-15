@@ -168,7 +168,7 @@ class JEPAModel(nn.Module):
             # Use previous prediction and current action to predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
             with torch.no_grad():
-                targ_t = self.encoder(states[:, t+1:t+2]) # Use same predictor for target
+                targ_t = self.encoder(states[:, t+1]) # Use same predictor for target
 
             predictions.append(pred_t)
             targets.append(targ_t)
