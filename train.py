@@ -186,7 +186,7 @@ def main():
     # Hyperparameters
     BATCH_SIZE = 64
     LEARNING_RATE = 1e-4
-    EPOCHS = 50
+    EPOCHS = 10
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create data loader

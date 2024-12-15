@@ -236,14 +236,14 @@ class ProbingEvaluator:
             probing_losses.append(losses.cpu())
 
             # Visualize every N batches
-            if idx % 10 == 0:
-                os.makedirs("trajectory_plots", exist_ok=True)
-                self.visualize_trajectories(
-                    pred_locs=pred_locs,
-                    target_locs=target,
-                    walls=batch.states[:, 0, 1],
-                    save_path=f"trajectory_plots/trajectory_pred_{prefix}_{idx}.png",
-                )
+            # if idx % 10 == 0:
+            #     os.makedirs("trajectory_plots", exist_ok=True)
+            #     self.visualize_trajectories(
+            #         pred_locs=pred_locs,
+            #         target_locs=target,
+            #         walls=batch.states[:, 0, 1],
+            #         save_path=f"trajectory_plots/trajectory_pred_{prefix}_{idx}.png",
+            #     )
 
         losses_t = torch.stack(probing_losses, dim=0).mean(dim=0)
         losses_t = self.normalizer.unnormalize_mse(losses_t)
