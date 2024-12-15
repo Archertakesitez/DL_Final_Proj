@@ -130,6 +130,12 @@ class JEPAModel(nn.Module):
             ):
                 param_k.data.copy_(param_q.data)
                 param_k.requires_grad = False
+        else:
+            # If not using momentum, you can either:
+            # 1) Not define a target_encoder at all, and rely on encoder for targets.
+            # 2) Define a fixed target encoder as a copy of encoder (less common).
+            # Here we omit the target encoder when not using momentum.
+            self.target_encoder = None
 
     @torch.no_grad()
     def momentum_update(self):
@@ -169,14 +175,25 @@ class JEPAModel(nn.Module):
         else:
             # Training mode: Full sequence provided
             s0 = self.encoder(states[:, 0])
-            t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
+            if self.use_momentum:
+                with torch.no_grad():
+                    t0 = self.target_encoder(states[:, 0])
+            else:
+                # If no momentum, you can still compute targets from the encoder with no_grad.
+                with torch.no_grad():
+                    t0 = self.encoder(states[:, 0])
             predictions = [s0]
             targets = [t0]
 
             for t in range(T):
                 pred_t = self.predictor(predictions[-1], actions[:, t])
+                # Compute the target for the next state
                 with torch.no_grad():
-                    targ_t = self.encoder(states[:, t + 1])
+                    if self.use_momentum:
+                        targ_t = self.target_encoder(states[:, t + 1])
+                    else:
+                        targ_t = self.encoder(states[:, t + 1])
+
                 predictions.append(pred_t)
                 targets.append(targ_t)
 
