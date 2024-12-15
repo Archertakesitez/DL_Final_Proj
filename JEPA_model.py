@@ -164,7 +164,7 @@ class JEPAModel(nn.Module):
         predictions = [s0]
         targets = [t0]
 
-        for t in range(T - 1):  # T-1 because we already have initial state
+        for t in range(T):  # T-1 because we already have initial state
             # Use previous prediction and current action to predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
             targ_t = self.predictor(
