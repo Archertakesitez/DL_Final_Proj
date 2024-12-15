@@ -15,7 +15,7 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
-def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
+def vicreg_loss(z1, z2, sim_coef=100.0, std_coef=25.0, cov_coef=1.0):
     """
     Original VICReg loss implementation
     """
@@ -216,7 +216,7 @@ def main():
     )
 
     # Initialize model
-    model = JEPAModel(latent_dim=256, use_momentum=True).to(DEVICE)
+    model = JEPAModel(latent_dim=256, use_momentum=False).to(DEVICE)
 
     # Initialize optimizer
     optimizer = torch.optim.Adam(
