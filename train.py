@@ -137,10 +137,8 @@ def train_jepa(
             states, actions = apply_advanced_augmentations(states, actions)
 
             optimizer.zero_grad()
-            # Only pass initial states and full action sequence
-
-            init_states = states[:, 0:1]  # Take only first timestep [B, 1, C, H, W]
-            predictions, targets = model(states=init_states, actions=actions)
+            # Pass full states sequence
+            predictions, targets = model(states=states, actions=actions)
             loss = vicreg_loss(predictions, targets)
 
             loss.backward()
