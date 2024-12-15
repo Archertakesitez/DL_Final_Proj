@@ -132,7 +132,7 @@ class ProbingEvaluator:
 
                 target = getattr(batch, "locations").cuda()
                 target = self.normalizer.normalize_location(target)
-                target = target[:, 1:, :]  # Remove first timestep
+                # target = target[:, 1:, :]  # Remove first timestep
                 # print("target shape before sampling:", target.shape)
 
                 if (
@@ -227,7 +227,7 @@ class ProbingEvaluator:
             # Process target
             target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
-            target = target[:, 1:, :]  # Remove first timestep to match predictions
+            # target = target[:, 1:, :]  # Remove first timestep to match predictions
 
             # Make predictions using prober
             pred_locs = torch.stack(
