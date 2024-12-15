@@ -158,14 +158,21 @@ class JEPAModel(nn.Module):
 
         # Initial encoding (Enc_θ)
         s0 = self.encoder(states[:, 0])  # [B, D]
+        t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
         # Predict future states recursively (Pred_φ)
         predictions = [s0]
+        targets = [t0]
 
         for t in range(T):  # T predictions
             # Use previous prediction and current action to predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
+            targ_t = self.predictor(
+                targets[-1], actions[:, t]
+            )  # Use same predictor for target
             predictions.append(pred_t)
+            targets.append(targ_t)
 
         predictions = torch.stack(predictions, dim=1)  # [B, T+1, D]
+        targets = torch.stack(targets, dim=1)  # [B, T+1, D]
 
-        return predictions
+        return predictions, targets
