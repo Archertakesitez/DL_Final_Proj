@@ -148,31 +148,38 @@ class JEPAModel(nn.Module):
         """
         Forward pass implementing recurrent JEPA prediction.
         Args:
-            states: Full sequence of states [B, T+1, C, H, W]
+            states: Full sequence of states [B, T+1, C, H, W] or initial state [B, 1, C, H, W]
             actions: Action sequence [B, T, 2]
         """
-        B, T = actions.shape[:2]  # T is sequence length for actions
+        B, T = actions.shape[:2]
 
-        # Initial encoding
-        s0 = self.encoder(states[:, 0])
-        t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
-        # Predict future states recursively (Pred_φ)
-        predictions = [s0]
-        targets = [t0]
+        # Handle both full sequence and initial state cases
+        if states.shape[1] == 1:
+            # Evaluation mode: Only initial state provided
+            s0 = self.encoder(states[:, 0])
+            predictions = [s0]
 
-        # We need T steps of prediction, and have T+1 states total
-        for t in range(T):
-            # Predict next state from previous prediction
-            pred_t = self.predictor(predictions[-1], actions[:, t])
+            for t in range(T):
+                pred_t = self.predictor(predictions[-1], actions[:, t])
+                predictions.append(pred_t)
 
-            # Get target from actual next state
-            with torch.no_grad():
-                targ_t = self.target_encoder(states[:, t + 1])
+            predictions = torch.stack(predictions, dim=1)
+            return predictions, None  # Return None for targets in eval mode
 
-            predictions.append(pred_t)
-            targets.append(targ_t)
+        else:
+            # Training mode: Full sequence provided
+            s0 = self.encoder(states[:, 0])
+            t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
+            predictions = [s0]
+            targets = [t0]
 
-        predictions = torch.stack(predictions, dim=1)  # [B, T+1, D]
-        targets = torch.stack(targets, dim=1)  # [B, T+1, D]
+            for t in range(T):
+                pred_t = self.predictor(predictions[-1], actions[:, t])
+                with torch.no_grad():
+                    targ_t = self.target_encoder(states[:, t + 1])
+                predictions.append(pred_t)
+                targets.append(targ_t)
 
-        return predictions, targets
+            predictions = torch.stack(predictions, dim=1)
+            targets = torch.stack(targets, dim=1)
+            return predictions, targets
