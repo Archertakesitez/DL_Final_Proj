@@ -118,7 +118,7 @@ def train_jepa(
 
             init_states = states[:, 0:1]  # Take only first timestep [B, 1, C, H, W]
             predictions, targets = model(states=init_states, actions=actions)
-            loss = vicreg_loss(predictions, targets)
+            loss = vicreg_loss(predictions[:, 1:], targets[:, 1:])
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
