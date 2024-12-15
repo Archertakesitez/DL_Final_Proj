@@ -110,12 +110,13 @@ class Predictor(nn.Module):
 
 
 class JEPAModel(nn.Module):
-    def __init__(self, latent_dim=256, use_momentum=False, momentum=0.99):
+    def __init__(self, latent_dim=256, use_momentum=True, momentum=0.99):
         super().__init__()
         self.latent_dim = latent_dim
         self.use_momentum = use_momentum
         self.momentum = momentum
         self.repr_dim = latent_dim  # Required by evaluator.py
+
         # Online networks
         self.encoder = Encoder(latent_dim)
         self.predictor = Predictor(latent_dim)
@@ -143,7 +144,7 @@ class JEPAModel(nn.Module):
                 1.0 - self.momentum
             )
 
-    def forward(self, states, actions):
+    def forward(self, states, actions, train=False):
         """
         Forward pass implementing recurrent JEPA prediction.
         Args:
@@ -157,26 +158,22 @@ class JEPAModel(nn.Module):
 
         # Initial encoding (Enc_θ)
         s0 = self.encoder(states[:, 0])  # [B, D]
+        # t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
+
+        # Predict future states recursively (Pred_φ)
         predictions = [s0]
-        if states.shape[1] == 1:  # Evaluation mode
-            # ... evaluation logic
-            for t in range(T):  # T-1 because we already have initial state
-                # Use previous prediction and current action to predict next state
-                pred_t = self.predictor(predictions[-1], actions[:, t])
-                predictions.append(pred_t)
-            predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-            return predictions, None
-        else:
-            targets = [s0]
-            for t in range(T):  # T-1 because we already have initial state
-                # Use previous prediction and current action to predict next state
-                pred_t = self.predictor(predictions[-1], actions[:, t])
+        targets = [s0]
+
+        for t in range(T):  # T-1 because we already have initial state
+            # Use previous prediction and current action to predict next state
+            pred_t = self.predictor(predictions[-1], actions[:, t])
+            if train:
                 targ_t = self.encoder(states[:, t + 1])  # Use same predictor for target
                 targets.append(targ_t)
 
-                predictions.append(pred_t)
+            predictions.append(pred_t)
 
-            predictions = torch.stack(predictions, dim=1)  # [B, T, D]
-            targets = torch.stack(targets, dim=1)  # [B, T, D]
+        predictions = torch.stack(predictions, dim=1)  # [B, T, D]
+        targets = torch.stack(targets, dim=1)  # [B, T, D]
 
-            return predictions, targets
+        return predictions, targets

@@ -96,7 +96,7 @@ def train_jepa(
     #     optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
     # )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
     STD_COLLAPSE_THRESHOLD = 0.05
 
@@ -115,7 +115,7 @@ def train_jepa(
             # Only pass initial states and full action sequence
 
             # init_states = states[:, 0:1]  # Take only first timestep [B, 1, C, H, W]
-            predictions, targets = model(states=states, actions=actions)
+            predictions, targets = model(states=states, actions=actions, train=True)
             loss = vicreg_loss(predictions[:, 1:], targets[:, 1:])
 
             loss.backward()
@@ -184,7 +184,7 @@ def main():
     # Hyperparameters
     BATCH_SIZE = 64
     LEARNING_RATE = 1e-4
-    EPOCHS = 50
+    EPOCHS = 10
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create data loader
