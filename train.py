@@ -98,7 +98,7 @@ def train_jepa(
     #     optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
     # )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
 
     STD_COLLAPSE_THRESHOLD = 0.05
 
