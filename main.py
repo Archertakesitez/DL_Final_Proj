@@ -110,14 +110,19 @@ def location_losses(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 if __name__ == "__main__":
+    # device = get_device()
+    # model = load_model()
+
+    # total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # print(f"Total Trainable Parameters: {total_params:,}")
+
+    # probe_train_ds, probe_val_ds = load_data(device)
+    # evaluate_model(device, model, probe_train_ds, probe_val_ds)
+
+    # probe_train_expert_ds, probe_val_expert_ds = load_expert_data(device)
+    # evaluate_model(device, model, probe_train_expert_ds, probe_val_expert_ds)
     device = get_device()
-    model = load_model()
-
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total Trainable Parameters: {total_params:,}")
-
     probe_train_ds, probe_val_ds = load_data(device)
+    model = load_model()
+    model = model.to(device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)
-
-    probe_train_expert_ds, probe_val_expert_ds = load_expert_data(device)
-    evaluate_model(device, model, probe_train_expert_ds, probe_val_expert_ds)

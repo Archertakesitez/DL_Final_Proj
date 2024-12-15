@@ -77,33 +77,6 @@ def apply_advanced_augmentations(states, actions, p=0.3):
     return states, actions
 
 
-def apply_trajectory_augmentations(states, actions, p=0.3):
-    """
-    Apply augmentations that preserve action-state relationships
-    states: [B, T, C, H, W]
-    actions: [B, T-1, 2] (delta_x, delta_y)
-    """
-    B, T, C, H, W = states.shape
-
-    # Horizontal flip - need to flip both states AND actions
-    if torch.rand(1) < p:
-        states = torch.flip(states, dims=[-1])
-        actions[:, :, 0] = -actions[:, :, 0]  # Flip x-direction actions
-
-    # 90-degree rotations
-    if torch.rand(1) < p:
-        k = torch.randint(1, 4, (1,)).item()  # Convert tensor to integer with .item()
-        states = torch.rot90(states, k=k, dims=[-2, -1])
-
-        # Rotate actions by k*90 degrees
-        for _ in range(k):
-            actions_x = actions[:, :, 0].clone()
-            actions[:, :, 0] = -actions[:, :, 1]  # x = -y
-            actions[:, :, 1] = actions_x  # y = x
-
-    return states, actions
-
-
 def train_jepa(
     model,
     train_loader,
@@ -119,9 +92,11 @@ def train_jepa(
     patience_counter = 0
     best_model_state = None
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
-    )
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
+    # )
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
     STD_COLLAPSE_THRESHOLD = 0.05
 
@@ -137,9 +112,11 @@ def train_jepa(
             states, actions = apply_advanced_augmentations(states, actions)
 
             optimizer.zero_grad()
-            # Pass full states sequence
-            predictions, targets = model(states=states, actions=actions)
-            loss = vicreg_loss(predictions, targets)
+            # Only pass initial states and full action sequence
+
+            # init_states = states[:, 0:1]  # Take only first timestep [B, 1, C, H, W]
+            predictions, targets = model(states=states, actions=actions, train=True)
+            loss = vicreg_loss(predictions[:, 1:], targets[:, 1:])
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -205,9 +182,9 @@ def train_jepa(
 
 def main():
     # Hyperparameters
-    BATCH_SIZE = 32
-    LEARNING_RATE = 3e-5
-    EPOCHS = 100
+    BATCH_SIZE = 64
+    LEARNING_RATE = 1e-4
+    EPOCHS = 50
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create data loader
@@ -216,7 +193,7 @@ def main():
     )
 
     # Initialize model
-    model = JEPAModel(latent_dim=256, use_momentum=True).to(DEVICE)
+    model = JEPAModel(latent_dim=256, use_momentum=False, momentum=0.5).to(DEVICE)
 
     # Initialize optimizer
     optimizer = torch.optim.Adam(
