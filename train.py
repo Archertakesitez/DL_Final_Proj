@@ -206,7 +206,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 32
-    LEARNING_RATE = 3e-4
+    LEARNING_RATE = 1e-5
     EPOCHS = 100
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
