@@ -110,7 +110,7 @@ class Predictor(nn.Module):
 
 
 class JEPAModel(nn.Module):
-    def __init__(self, latent_dim=256, use_momentum=False, momentum=0.99):
+    def __init__(self, latent_dim=256, use_momentum=True, momentum=0.99):
         super().__init__()
         self.latent_dim = latent_dim
         self.use_momentum = use_momentum
