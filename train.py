@@ -94,9 +94,11 @@ def train_jepa(
     patience_counter = 0
     best_model_state = None
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
-    )
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, mode="min", factor=0.1, patience=2, verbose=True, threshold=min_delta
+    # )
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
     STD_COLLAPSE_THRESHOLD = 0.05
 
@@ -182,9 +184,9 @@ def train_jepa(
 
 def main():
     # Hyperparameters
-    BATCH_SIZE = 32
-    LEARNING_RATE = 3e-5
-    EPOCHS = 100
+    BATCH_SIZE = 64
+    LEARNING_RATE = 1e-4
+    EPOCHS = 50
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create data loader
