@@ -148,28 +148,32 @@ class JEPAModel(nn.Module):
         """
         Forward pass implementing recurrent JEPA prediction.
         Args:
-            states: Initial observation only [B, 1, C, H, W]
+            states: Full sequence of states [B, T+1, C, H, W]  # Need T+1 states for T predictions
             actions: Full action sequence [B, T, 2]
         Returns:
-            predictions: Predicted latent states [B, T, D]
-            targets: Target latent states [B, T, D]
+            predictions: Predicted latent states [B, T+1, D]
+            targets: Target latent states [B, T+1, D]
         """
-        B, T = actions.shape[:2]  # Get batch size and sequence length from actions
+        B, T = actions.shape[:2]  # T is sequence length for actions
 
-        # Initial encoding (Enc_θ)
-        s0 = self.encoder(states[:, 0])  # [B, D]
+        # Initial encoding
+        s0 = self.encoder(states[:, 0])
         t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
         # Predict future states recursively (Pred_φ)
         predictions = [s0]
         targets = [t0]
 
-        for t in range(T):  # T predictions
-            # Use previous prediction and current action to predict next state
+        # We need T steps of prediction, and have T+1 states total
+        for t in range(T):
+            # Predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
+
+            # Get target from next actual state
             with torch.no_grad():
                 targ_t = self.target_encoder(
-                    states[:, t + 1 : t + 2]
-                )  # Encode actual next state
+                    states[:, t + 1]
+                )  # t+1 is valid because we have T+1 states
+
             predictions.append(pred_t)
             targets.append(targ_t)
 
