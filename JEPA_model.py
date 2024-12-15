@@ -72,7 +72,7 @@ class Encoder(nn.Module):
 
         # Third residual before final spatial reduction
         self.res3 = ResidualBlock(
-            128, 256
+            256, 256
         )  # Second residual to preserve important features
         self.pool3 = nn.MaxPool2d(2, 2)  # -> (256, 4, 4)
 
