@@ -110,7 +110,7 @@ class Predictor(nn.Module):
 
 
 class JEPAModel(nn.Module):
-    def __init__(self, latent_dim=256, use_momentum=True, momentum=0.99):
+    def __init__(self, latent_dim=256, use_momentum=False, momentum=0.99):
         super().__init__()
         self.latent_dim = latent_dim
         self.use_momentum = use_momentum
@@ -168,7 +168,7 @@ class JEPAModel(nn.Module):
             # Use previous prediction and current action to predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
             if train:
-                targ_t = self.encoder(states[:, t+1]) # Use same predictor for target
+                targ_t = self.encoder(states[:, t + 1])  # Use same predictor for target
                 targets.append(targ_t)
 
             predictions.append(pred_t)
