@@ -91,6 +91,7 @@ class Encoder(nn.Module):
         # FC layers
         x = x.view(x.size(0), -1)
         x = self.fc(x)
+        x = F.normalize(x, dim=-1)  # Add L2 normalization
         return x
 
 
@@ -158,18 +159,26 @@ class JEPAModel(nn.Module):
 
         # Initial encoding (Enc_θ)
         s0 = self.encoder(states[:, 0])  # [B, D]
-        # t0 = self.target_encoder(states[:, 0]) if self.use_momentum else s0
+        predictions = [s0]
+        if train and self.use_momentum:
+            with torch.no_grad():
+                t0 = self.target_encoder(states[:, 0])
+                targets = [t0]  # Use target encoder for initial state too
+        else:
+            targets = [s0]
 
         # Predict future states recursively (Pred_φ)
-        predictions = [s0]
-        targets = [s0]
 
         for t in range(T):  # T-1 because we already have initial state
             # Use previous prediction and current action to predict next state
             pred_t = self.predictor(predictions[-1], actions[:, t])
             if train:
                 with torch.no_grad():  # Explicitly stop gradients for targets
-                    targ_t = self.encoder(states[:, t + 1])
+                    targ_t = (
+                        self.target_encoder(states[:, t + 1])
+                        if self.use_momentum
+                        else self.encoder(states[:, t + 1])
+                    )
                 targets.append(targ_t)
 
             predictions.append(pred_t)

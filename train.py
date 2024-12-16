@@ -175,7 +175,7 @@ def train_jepa(
             model.load_state_dict(best_model_state)
             break
 
-        scheduler.step(avg_loss)
+        scheduler.step()
 
     return model, best_loss
 
@@ -183,7 +183,7 @@ def train_jepa(
 def main():
     # Hyperparameters
     BATCH_SIZE = 64
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 5e-5
     EPOCHS = 10
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -193,7 +193,7 @@ def main():
     )
 
     # Initialize model
-    model = JEPAModel(latent_dim=256, use_momentum=False, momentum=0.5).to(DEVICE)
+    model = JEPAModel(latent_dim=256, use_momentum=True, momentum=0.99).to(DEVICE)
 
     # Initialize optimizer
     optimizer = torch.optim.Adam(
