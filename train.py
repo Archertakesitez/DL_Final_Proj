@@ -53,29 +53,27 @@ def vicreg_loss(z1, z2, sim_coef=25.0, std_coef=25.0, cov_coef=1.0):
 def apply_advanced_augmentations(states, actions, p=0.3):
     """Enhanced augmentations specific to the two-room environment"""
     B, T, C, H, W = states.shape
-    
+
     # Existing geometric augmentations
     if torch.rand(1) < p:
         states = torch.flip(states, dims=[-1])
         actions[:, :, 0] = -actions[:, :, 0]
-    
+
     # New: Random cropping and resizing (maintains spatial relationships)
     if torch.rand(1) < p:
         scale = 0.8 + 0.4 * torch.rand(1)  # Random scale between 0.8 and 1.2
         scaled_states = F.interpolate(
-            states.view(-1, C, H, W),
-            scale_factor=scale.item(),
-            mode='bilinear'
+            states.view(-1, C, H, W), scale_factor=scale.item(), mode="bilinear"
         )
-        states = F.interpolate(scaled_states, size=(H, W), mode='bilinear')
+        states = F.interpolate(scaled_states, size=(H, W), mode="bilinear")
         states = states.view(B, T, C, H, W)
-        
+
     # New: Small random translations (that preserve wall relationships)
     if torch.rand(1) < p:
         dx = torch.randint(-2, 3, (1,)).item()
         dy = torch.randint(-2, 3, (1,)).item()
         states = torch.roll(states, shifts=(dy, dx), dims=(-2, -1))
-        
+
     return states, actions
 
 
@@ -195,7 +193,7 @@ def main():
     )
 
     # Initialize model
-    torch.manual_seed(0)
+    torch.manual_seed(54321)
     model = JEPAModel(latent_dim=256, use_momentum=False, momentum=0.5).to(DEVICE)
 
     # Initialize optimizer
