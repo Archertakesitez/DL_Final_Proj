@@ -91,7 +91,6 @@ class Encoder(nn.Module):
         # FC layers
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        x = F.normalize(x, dim=-1)  # Add L2 normalization
         return x
 
 
@@ -103,7 +102,6 @@ class Predictor(nn.Module):
             nn.LayerNorm(384),
             nn.ReLU(True),
             nn.Linear(384, latent_dim),
-            nn.BatchNorm1d(latent_dim),
         )
 
     def forward(self, state, action):
