@@ -103,13 +103,12 @@ class Predictor(nn.Module):
             nn.LayerNorm(384),
             nn.ReLU(True),
             nn.Linear(384, latent_dim),
+            nn.BatchNorm1d(latent_dim),
         )
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
-        x = self.net(x)
-        x = F.normalize(x, dim=-1)  # Add normalization here
-        return x
+        return self.net(x)
 
 
 class JEPAModel(nn.Module):
