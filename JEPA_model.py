@@ -107,7 +107,9 @@ class Predictor(nn.Module):
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
-        return self.net(x)
+        x = self.net(x)
+        x = F.normalize(x, dim=-1)  # Add normalization here
+        return x
 
 
 class JEPAModel(nn.Module):
