@@ -1,3 +1,7 @@
+Team Name: Tensor Titans
+
+Team ID: 1
+
 Name: Erchi Zhang
 NetID: ez806
 
