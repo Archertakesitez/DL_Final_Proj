@@ -195,7 +195,7 @@ def main():
     )
 
     # Initialize model
-    torch.manual_seed(150)
+    torch.manual_seed(0)
     model = JEPAModel(latent_dim=256, use_momentum=False, momentum=0.5).to(DEVICE)
 
     # Initialize optimizer
